@@ -10,6 +10,8 @@ from typing import Optional, Callable
 import threading
 import queue
 import time
+import subprocess
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -54,26 +56,31 @@ class AudioCaptureALSA:
         devices = []
         
         try:
-            # Get list of cards
-            cards = alsaaudio.cards()
+            # Use arecord -l to get actual card numbers
+            result = subprocess.run(['arecord', '-l'], 
+                                  capture_output=True, 
+                                  text=True, 
+                                  check=True)
             
-            for card_name in cards:
-                # Find card index
-                card_idx = alsaaudio.card_indexes().get(card_name)
-                if card_idx is not None:
-                    # Try to get PCMs for this card
-                    try:
-                        pcms = alsaaudio.pcms(alsaaudio.PCM_CAPTURE)
-                        devices.append({
-                            'card': card_idx,
-                            'name': card_name,
-                            'device_string': f"plughw:{card_idx},0",
-                            'pcms': pcms
-                        })
-                        logger.info(f"Card {card_idx}: {card_name} (plughw:{card_idx},0)")
-                    except Exception as e:
-                        logger.debug(f"Error getting PCMs for {card_name}: {e}")
+            for line in result.stdout.split('\n'):
+                # Look for lines like: card 2: CODEC [USB AUDIO  CODEC], device 0: USB Audio [USB Audio]
+                match = re.match(r'card (\d+): (\w+) \[([^\]]+)\]', line)
+                if match:
+                    card_num = int(match.group(1))
+                    card_id = match.group(2)
+                    card_name = match.group(3)
+                    device_string = f"plughw:{card_num},0"
+                    
+                    devices.append({
+                        'card': card_num,
+                        'id': card_id,
+                        'name': card_name,
+                        'device_string': device_string
+                    })
+                    logger.info(f"Card {card_num}: {card_name} ({device_string})")
                         
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error running arecord: {e}")
         except Exception as e:
             logger.error(f"Error listing devices: {e}")
         

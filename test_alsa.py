@@ -7,6 +7,8 @@ Tests capturing audio directly from USB turntable using ALSA.
 import alsaaudio
 import sys
 import time
+import subprocess
+import re
 
 def test_alsa_device(device_string):
     """Test capturing from ALSA device."""
@@ -64,30 +66,53 @@ def test_alsa_device(device_string):
         return False
 
 
+def get_arecord_devices():
+    """Parse arecord -l to get actual card numbers."""
+    try:
+        result = subprocess.run(['arecord', '-l'], 
+                              capture_output=True, 
+                              text=True, 
+                              check=True)
+        
+        devices = []
+        for line in result.stdout.split('\n'):
+            # Look for lines like: card 2: CODEC [USB AUDIO  CODEC], device 0: USB Audio [USB Audio]
+            match = re.match(r'card (\d+): (\w+) \[([^\]]+)\]', line)
+            if match:
+                card_num = int(match.group(1))
+                card_id = match.group(2)
+                card_name = match.group(3)
+                devices.append({
+                    'card': card_num,
+                    'id': card_id,
+                    'name': card_name,
+                    'device_string': f"plughw:{card_num},0"
+                })
+        
+        return devices
+    except Exception as e:
+        print(f"Error running arecord: {e}")
+        return []
+
+
 def list_alsa_cards():
     """List all ALSA sound cards."""
-    print("\n📻 ALSA Sound Cards:")
+    print("\n📻 ALSA Sound Cards (from arecord -l):")
     print("=" * 60)
     
-    cards = alsaaudio.cards()
+    devices = get_arecord_devices()
     
-    if not cards:
-        print("No sound cards found")
+    if not devices:
+        print("No capture devices found")
+        print("\nTry running: arecord -l")
         return []
     
     device_strings = []
     
-    for card_name in cards:
-        print(f"\n  {card_name}")
-        
-        # Get card index
-        try:
-            card_idx = alsaaudio.card_indexes()[card_name]
-            device_string = f"plughw:{card_idx},0"
-            device_strings.append(device_string)
-            print(f"    Device: {device_string}")
-        except Exception as e:
-            print(f"    Error getting index: {e}")
+    for dev in devices:
+        print(f"\n  Card {dev['card']}: {dev['name']}")
+        print(f"    Device: {dev['device_string']}")
+        device_strings.append(dev['device_string'])
     
     return device_strings
 
