@@ -110,20 +110,25 @@ class StreamHandler(BaseHTTPRequestHandler):
             logger.error(f"Stream error: {e}")
 
 
-def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"):
+def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k", volume_gain=2.0):
     """
     Run FFmpeg to capture from ALSA and encode to MP3.
     Read MP3 data from stdout and broadcast to all clients.
+    
+    Args:
+        volume_gain: Volume multiplier (1.0 = no change, 2.0 = double volume)
     """
     global ffmpeg_process
     
     logger.info(f"🎤 Starting FFmpeg capture from {device}")
+    logger.info(f"🔊 Volume gain: {volume_gain}x")
     
-    # FFmpeg command: capture from ALSA, encode to MP3, output to stdout
+    # FFmpeg command: capture from ALSA, apply gain, encode to MP3, output to stdout
     cmd = [
         'ffmpeg',
         '-f', 'alsa',
         '-i', device,
+        '-af', f'volume={volume_gain}',  # Apply volume gain
         '-acodec', 'libmp3lame',
         '-ab', bitrate,
         '-ac', '2',
@@ -234,6 +239,7 @@ def main():
     DEVICE = "plughw:2,0"
     SAMPLE_RATE = 48000
     BITRATE = "320k"
+    VOLUME_GAIN = 2.0  # Boost volume by 2x (adjust if needed: 1.5, 2.5, etc.)
     
     local_ip = get_local_ip()
     
@@ -241,12 +247,15 @@ def main():
     print("🎵 Turntable Streaming Server v2")
     print("=" * 60)
     print(f"\n📻 Audio Source: {DEVICE}")
+    print(f"🔊 Volume Boost: {VOLUME_GAIN}x")
     print(f"🌐 Stream URL:   http://{local_ip}:{PORT}/turntable.mp3")
     print(f"📊 Quality:      MP3 {BITRATE}, {SAMPLE_RATE}Hz, Stereo")
     print(f"\n✅ Supports multiple simultaneous listeners")
     print(f"✅ Properly encoded MP3 stream for Sonos")
     print(f"\n💡 To play on Sonos:")
     print(f"   python3 play_on_sonos.py")
+    print(f"\n💡 To adjust volume, edit VOLUME_GAIN in stream_server_v2.py")
+    print(f"   (1.0 = normal, 2.0 = double, 3.0 = triple)")
     print(f"\n⏹️  Press Ctrl+C to stop\n")
     print("=" * 60 + "\n")
     
@@ -257,7 +266,7 @@ def main():
     # Start FFmpeg capture in background thread
     capture_thread = threading.Thread(
         target=ffmpeg_capture_thread,
-        args=(DEVICE, SAMPLE_RATE, BITRATE),
+        args=(DEVICE, SAMPLE_RATE, BITRATE, VOLUME_GAIN),
         daemon=True
     )
     capture_thread.start()
