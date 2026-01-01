@@ -6,6 +6,11 @@ audio_input:
   # Leave as null for auto-detection or specify index
   device_index: null
   
+  # Alternative: Device name substring to search for
+  # Useful when PyAudio enumeration doesn't work
+  # Examples: "USB AUDIO", "CODEC", null
+  device_name: null
+  
   # Sample rate (44100 for CD quality, 48000 for high quality)
   sample_rate: 44100
   

@@ -132,7 +132,19 @@ def list_audio_devices():
         devices = capture.list_devices()
         
         if not devices:
-            print("No audio input devices found.")
+            print("⚠️  No audio input devices found by PyAudio.")
+            print("\nTroubleshooting:")
+            print("  1. Check hardware detection:")
+            print("     arecord -l")
+            print()
+            print("  2. If you see your device in arecord, try specifying by card:")
+            print("     In config.yaml, you can use ALSA device string:")
+            print("     audio_input:")
+            print("       device_name: 'plughw:2,0'  # where 2 is your card number")
+            print()
+            print("  3. Try reinstalling PyAudio:")
+            print("     pip uninstall pyaudio")
+            print("     pip install pyaudio")
             return
         
         for dev in devices:
@@ -190,6 +202,7 @@ def run_streamer(cfg: dict, device_name: str):
     audio_cfg = cfg.get('audio_input', {})
     capture = AudioCapture(
         device_index=audio_cfg.get('device_index'),
+        device_name=audio_cfg.get('device_name'),
         sample_rate=audio_cfg.get('sample_rate', 44100),
         channels=audio_cfg.get('channels', 2),
         chunk_size=audio_cfg.get('chunk_size', 1024),

@@ -18,6 +18,7 @@ class AudioCapture:
     
     def __init__(self, 
                  device_index: Optional[int] = None,
+                 device_name: Optional[str] = None,
                  sample_rate: int = 44100,
                  channels: int = 2,
                  chunk_size: int = 1024,
@@ -27,12 +28,14 @@ class AudioCapture:
         
         Args:
             device_index: Index of input device (None for default)
+            device_name: ALSA device name (e.g., 'plughw:2,0') - alternative to index
             sample_rate: Sample rate in Hz
             channels: Number of audio channels (1=mono, 2=stereo)
             chunk_size: Number of frames per buffer
             sample_width: Bits per sample (8, 16, 24, or 32)
         """
         self.device_index = device_index
+        self.device_name = device_name
         self.sample_rate = sample_rate
         self.channels = channels
         self.chunk_size = chunk_size
@@ -50,22 +53,47 @@ class AudioCapture:
         
     def list_devices(self):
         """List all available audio input devices."""
-        info = self.audio.get_host_api_info_by_index(0)
-        num_devices = info.get('deviceCount')
-        
         devices = []
+        
+        # Get total device count across all host APIs
+        num_devices = self.audio.get_device_count()
+        
         for i in range(num_devices):
-            device_info = self.audio.get_device_info_by_host_api_device_index(0, i)
-            if device_info.get('maxInputChannels') > 0:
-                devices.append({
-                    'index': i,
-                    'name': device_info.get('name'),
-                    'channels': device_info.get('maxInputChannels'),
-                    'sample_rate': int(device_info.get('defaultSampleRate'))
-                })
-                logger.info(f"Device {i}: {device_info.get('name')}")
+            try:
+                device_info = self.audio.get_device_info_by_index(i)
+                if device_info.get('maxInputChannels') > 0:
+                    devices.append({
+                        'index': i,
+                        'name': device_info.get('name'),
+                        'channels': device_info.get('maxInputChannels'),
+                        'sample_rate': int(device_info.get('defaultSampleRate'))
+                    })
+                    logger.info(f"Device {i}: {device_info.get('name')}")
+            except Exception as e:
+                logger.debug(f"Error querying device {i}: {e}")
+                continue
         
         return devices
+    
+    def find_device_by_name(self, name_substring: str) -> Optional[int]:
+        """
+        Find device index by name substring (case-insensitive).
+        
+        Args:
+            name_substring: Part of device name to search for
+            
+        Returns:
+            Device index or None if not found
+        """
+        devices = self.list_devices()
+        name_lower = name_substring.lower()
+        
+        for device in devices:
+            if name_lower in device['name'].lower():
+                logger.info(f"Found device: {device['name']} at index {device['index']}")
+                return device['index']
+        
+        return None
     
     def get_audio_format(self):
         """Get PyAudio format based on sample width."""
@@ -89,19 +117,27 @@ class AudioCapture:
             return
         
         try:
+            # If device_name provided, try to find it first
+            device_to_use = self.device_index
+            if self.device_name and not device_to_use:
+                device_to_use = self.find_device_by_name(self.device_name)
+                if device_to_use is None:
+                    logger.warning(f"Device '{self.device_name}' not found, using default")
+            
             self.stream = self.audio.open(
                 format=self.get_audio_format(),
                 channels=self.channels,
                 rate=self.sample_rate,
                 input=True,
-                input_device_index=self.device_index,
+                input_device_index=device_to_use,
                 frames_per_buffer=self.chunk_size,
                 stream_callback=self._audio_callback if not callback else None
             )
             
             self.is_running = True
+            device_info = f"index {device_to_use}" if device_to_use is not None else "default"
             logger.info(f"Audio capture started: {self.sample_rate}Hz, "
-                       f"{self.channels}ch, {self.sample_width}bit")
+                       f"{self.channels}ch, {self.sample_width}bit, device: {device_info}")
             
             if callback:
                 self._capture_thread = threading.Thread(
