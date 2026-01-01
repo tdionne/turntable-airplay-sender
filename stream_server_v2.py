@@ -135,8 +135,19 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
         
         logger.info("✅ FFmpeg started, encoding to MP3")
         
+        # Start a thread to monitor FFmpeg stderr for errors
+        def log_ffmpeg_stderr():
+            for line in ffmpeg_process.stderr:
+                line_str = line.decode().strip()
+                if line_str:
+                    logger.warning(f"FFmpeg: {line_str}")
+        
+        stderr_thread = threading.Thread(target=log_ffmpeg_stderr, daemon=True)
+        stderr_thread.start()
+        
         # Read MP3 data and broadcast to all clients
         chunk_size = 8192
+        bytes_read = 0
         while is_running:
             try:
                 mp3_data = ffmpeg_process.stdout.read(chunk_size)
@@ -145,16 +156,22 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
                     logger.warning("FFmpeg stopped producing data")
                     break
                 
+                bytes_read += len(mp3_data)
+                if bytes_read % (8192 * 100) == 0:  # Log every ~800KB
+                    logger.debug(f"Streamed {bytes_read // 1024}KB so far")
+                
                 # Broadcast to all connected clients
-                dead_clients = []
-                for client_queue in clients:
-                    try:
-                        client_queue.put_nowait(mp3_data)
-                    except queue.Full:
-                        # Client queue full, drop this chunk
-                        pass
-                    except Exception:
-                        dead_clients.append(client_queue)
+                if clients:
+                    dead_clients = []
+                    for client_queue in clients:
+                        try:
+                            client_queue.put_nowait(mp3_data)
+                        except queue.Full:
+                            # Client queue full, drop this chunk
+                            logger.debug("Client queue full, dropping chunk")
+                        except Exception as e:
+                            logger.debug(f"Client queue error: {e}")
+                            dead_clients.append(client_queue)
                 
                 # Clean up dead clients
                 for client in dead_clients:
