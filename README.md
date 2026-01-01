@@ -26,81 +26,87 @@ Stream audio from your USB turntable to Sonos speakers via AirPlay 2 on Raspberr
 
 ## Installation
 
-### 1. System Dependencies
+### Quick Install (Recommended)
 
 ```bash
-# Update system
+# Clone the repository
+git clone https://github.com/tdionne/turntable-airplay-sender.git
+cd turntable-airplay-sender
+
+# Run the install script
+sudo ./install.sh
+
+# Repository can now be deleted!
+cd ..
+rm -rf turntable-airplay-sender
+```
+
+This installs everything to `/opt/turntable-streaming` and sets up the systemd service.
+
+### Manual Installation
+
+If you prefer to run from the cloned directory:
+
+```bash
+# Install system dependencies
 sudo apt-get update
-sudo apt-get upgrade -y
-
-# Install audio dependencies
 sudo apt-get install -y \
-    python3-pip \
-    python3-dev \
-    libasound2-dev \
-    portaudio19-dev \
+    python3-pip python3-dev python3-venv \
+    libasound2-dev portaudio19-dev \
     libavahi-compat-libdnssd-dev \
-    libssl-dev \
-    libffi-dev
+    libssl-dev libffi-dev ffmpeg
 
-# Install ffmpeg for audio processing
-sudo apt-get install -y ffmpeg
-```
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
 
-### 2. Python Dependencies
+# Install Python dependencies
+pip install -r requirements.txt
 
-```bash
-cd /path/to/turntable-airplay-sender
-pip3 install -r requirements.txt
-```
-
-### 3. Configuration
-
-```bash
-# Copy example config
+# Copy and edit configuration
 cp config.example.yaml config.yaml
-
-# Edit configuration with your settings
 nano config.yaml
 ```
 
 ## Usage
 
-### List Available Audio Devices
+### Start the Stream Server
 
+**If installed with install.sh:**
 ```bash
-python3 main.py --list-devices
-```
+# Start service
+sudo systemctl start turntable-stream
 
-### List Available AirPlay Devices
-
-```bash
-python3 main.py --discover
-```
-
-### Start Streaming
-
-```bash
-# Stream to specific Sonos device
-python3 main.py --device "Living Room Sonos"
-
-# Stream with custom configuration
-python3 main.py --config config.yaml
-```
-
-### Run as Service
-
-```bash
-# Copy systemd service file
-sudo cp turntable-airplay.service /etc/systemd/system/
-
-# Enable and start service
-sudo systemctl enable turntable-airplay
-sudo systemctl start turntable-airplay
+# Enable auto-start on boot
+sudo systemctl enable turntable-stream
 
 # Check status
-sudo systemctl status turntable-airplay
+sudo systemctl status turntable-stream
 ```
+
+**If running manually:**
+```bash
+source venv/bin/activate
+python3 stream_server_v2.py
+```
+
+### Play on Sonos
+
+**Direct control (command line):**
+```bash
+python3 play_on_sonos.py "Living Room"
+```
+
+**Web interface (for family):**
+```bash
+python3 web_control.py
+# Open http://YOUR_PI_IP:8080 in browser
+```
+
+**Sonos app (easiest for family):**
+1. Add turntable playlist to Sonos Music Library (see FAMILY_INSTRUCTIONS.md)
+2. Browse → Music Library → Playlists → Turntable
+3. Play!
 
 ## Configuration
 
