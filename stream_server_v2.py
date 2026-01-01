@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 HTTP streaming server for turntable audio.
-Supports multiple simultaneous connections and auto-reconnect.
+Uses FFmpeg for capture + MP3 encoding, broadcasts to multiple HTTP clients.
 """
 
 import subprocess
@@ -9,10 +9,10 @@ import threading
 import socket
 import logging
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from audio_capture_alsa import AudioCaptureALSA
 import queue
 import signal
 import sys
+import time
 
 # Setup logging
 logging.basicConfig(
@@ -22,14 +22,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Global audio queue for broadcasting to all clients
-audio_broadcast_queue = queue.Queue(maxsize=500)
+# Global state
 is_running = True
-mp3_encoder = None
+clients = []
+ffmpeg_process = None
 
 
 class StreamHandler(BaseHTTPRequestHandler):
     """HTTP request handler for audio streaming."""
+    
+    protocol_version = 'HTTP/1.1'
     
     def log_message(self, format, *args):
         """Override to use our logger."""
@@ -38,14 +40,15 @@ class StreamHandler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         """Handle HEAD requests (Sonos checks if stream exists)."""
         if self.path != '/turntable.mp3':
-            self.send_error(404, "Stream not found. Use: /turntable.mp3")
+            self.send_error(404, "Stream not found")
             return
         
         self.send_response(200)
         self.send_header('Content-Type', 'audio/mpeg')
         self.send_header('Cache-Control', 'no-cache, no-store')
-        self.send_header('Accept-Ranges', 'none')
+        self.send_header('Connection', 'close')
         self.end_headers()
+        logger.info(f"HEAD request from {self.client_address[0]}")
     
     def do_GET(self):
         """Handle GET requests for the stream."""
@@ -59,12 +62,13 @@ class StreamHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'audio/mpeg')
             self.send_header('Cache-Control', 'no-cache, no-store')
             self.send_header('Connection', 'close')
+            self.send_header('icy-name', 'Turntable')
             self.end_headers()
             
             logger.info(f"✅ Client connected: {self.client_address[0]}")
             
             # Create client-specific queue
-            client_queue = queue.Queue(maxsize=100)
+            client_queue = queue.Queue(maxsize=200)
             
             # Subscribe this client to broadcasts
             clients.append(client_queue)
@@ -73,17 +77,20 @@ class StreamHandler(BaseHTTPRequestHandler):
                 # Stream audio to client
                 while is_running:
                     try:
-                        # Get audio data (with timeout to allow checking is_running)
-                        audio_data = client_queue.get(timeout=1.0)
+                        # Get MP3 data (with timeout)
+                        mp3_data = client_queue.get(timeout=2.0)
                         
                         # Send to client
-                        self.wfile.write(audio_data)
-                        self.wfile.flush()
+                        self.wfile.write(mp3_data)
                         
                     except queue.Empty:
+                        # No data, continue waiting
                         continue
-                    except BrokenPipeError:
+                    except (BrokenPipeError, ConnectionResetError):
                         logger.info(f"Client disconnected: {self.client_address[0]}")
+                        break
+                    except Exception as e:
+                        logger.error(f"Send error: {e}")
                         break
                     
             finally:
@@ -96,54 +103,81 @@ class StreamHandler(BaseHTTPRequestHandler):
             logger.error(f"Stream error: {e}")
 
 
-# List of connected clients
-clients = []
-
-
-def audio_capture_thread(device="plughw:2,0", sample_rate=48000):
-    """Capture audio and broadcast to all clients."""
-    logger.info(f"🎤 Starting audio capture from {device}")
+def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"):
+    """
+    Run FFmpeg to capture from ALSA and encode to MP3.
+    Read MP3 data from stdout and broadcast to all clients.
+    """
+    global ffmpeg_process
     
-    capture = AudioCaptureALSA(
-        device=device,
-        sample_rate=sample_rate,
-        channels=2,
-        chunk_size=4096,  # Larger chunks for streaming
-        sample_width=16
-    )
+    logger.info(f"🎤 Starting FFmpeg capture from {device}")
     
-    def audio_callback(data):
-        """Broadcast audio to all connected clients."""
-        # Remove disconnected clients
-        dead_clients = []
-        for client_queue in clients:
-            try:
-                client_queue.put_nowait(data)
-            except queue.Full:
-                # Client not keeping up, skip this frame
-                pass
-            except Exception:
-                dead_clients.append(client_queue)
-        
-        # Clean up dead clients
-        for client in dead_clients:
-            if client in clients:
-                clients.remove(client)
+    # FFmpeg command: capture from ALSA, encode to MP3, output to stdout
+    cmd = [
+        'ffmpeg',
+        '-f', 'alsa',
+        '-i', device,
+        '-acodec', 'libmp3lame',
+        '-ab', bitrate,
+        '-ac', '2',
+        '-ar', str(sample_rate),
+        '-f', 'mp3',
+        '-'  # Output to stdout
+    ]
     
     try:
-        capture.start(callback=audio_callback)
-        logger.info("✅ Audio capture started")
+        ffmpeg_process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=8192
+        )
         
-        # Keep thread alive
-        import time
+        logger.info("✅ FFmpeg started, encoding to MP3")
+        
+        # Read MP3 data and broadcast to all clients
+        chunk_size = 8192
         while is_running:
-            time.sleep(1)
-            
+            try:
+                mp3_data = ffmpeg_process.stdout.read(chunk_size)
+                
+                if not mp3_data:
+                    logger.warning("FFmpeg stopped producing data")
+                    break
+                
+                # Broadcast to all connected clients
+                dead_clients = []
+                for client_queue in clients:
+                    try:
+                        client_queue.put_nowait(mp3_data)
+                    except queue.Full:
+                        # Client queue full, drop this chunk
+                        pass
+                    except Exception:
+                        dead_clients.append(client_queue)
+                
+                # Clean up dead clients
+                for client in dead_clients:
+                    if client in clients:
+                        clients.remove(client)
+                        
+            except Exception as e:
+                if is_running:
+                    logger.error(f"FFmpeg read error: {e}")
+                break
+                
+    except FileNotFoundError:
+        logger.error("FFmpeg not found! Install with: sudo apt-get install ffmpeg")
     except Exception as e:
-        logger.error(f"Audio capture error: {e}")
+        logger.error(f"FFmpeg error: {e}")
     finally:
-        capture.stop()
-        logger.info("Audio capture stopped")
+        if ffmpeg_process:
+            ffmpeg_process.terminate()
+            try:
+                ffmpeg_process.wait(timeout=5)
+            except:
+                ffmpeg_process.kill()
+        logger.info("FFmpeg stopped")
 
 
 def get_local_ip():
@@ -159,9 +193,11 @@ def get_local_ip():
 
 def signal_handler(sig, frame):
     """Handle Ctrl+C gracefully."""
-    global is_running
+    global is_running, ffmpeg_process
     logger.info("\n\nShutting down...")
     is_running = False
+    if ffmpeg_process:
+        ffmpeg_process.terminate()
     sys.exit(0)
 
 
@@ -173,17 +209,18 @@ def main():
     PORT = 8000
     DEVICE = "plughw:2,0"
     SAMPLE_RATE = 48000
+    BITRATE = "320k"
     
     local_ip = get_local_ip()
     
     print("\n" + "=" * 60)
-    print("🎵 Turntable Streaming Server")
+    print("🎵 Turntable Streaming Server v2")
     print("=" * 60)
     print(f"\n📻 Audio Source: {DEVICE}")
     print(f"🌐 Stream URL:   http://{local_ip}:{PORT}/turntable.mp3")
-    print(f"📊 Quality:      MP3 320kbps, {SAMPLE_RATE}Hz, Stereo")
+    print(f"📊 Quality:      MP3 {BITRATE}, {SAMPLE_RATE}Hz, Stereo")
     print(f"\n✅ Supports multiple simultaneous listeners")
-    print(f"✅ Auto-reconnects on client disconnect")
+    print(f"✅ Properly encoded MP3 stream for Sonos")
     print(f"\n💡 To play on Sonos:")
     print(f"   python3 play_on_sonos.py")
     print(f"\n⏹️  Press Ctrl+C to stop\n")
@@ -193,13 +230,16 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
-    # Start audio capture in background thread
+    # Start FFmpeg capture in background thread
     capture_thread = threading.Thread(
-        target=audio_capture_thread,
-        args=(DEVICE, SAMPLE_RATE),
+        target=ffmpeg_capture_thread,
+        args=(DEVICE, SAMPLE_RATE, BITRATE),
         daemon=True
     )
     capture_thread.start()
+    
+    # Give FFmpeg a moment to start
+    time.sleep(2)
     
     # Start HTTP server
     server = HTTPServer(('0.0.0.0', PORT), StreamHandler)
