@@ -1,0 +1,74 @@
+# Turntable AirPlay Sender Configuration
+
+# Audio Input Settings
+audio_input:
+  # Device index (use --list-devices to find yours)
+  # Leave as null for auto-detection or specify index
+  device_index: null
+  
+  # Sample rate (44100 for CD quality, 48000 for high quality)
+  sample_rate: 44100
+  
+  # Channels (2 for stereo)
+  channels: 2
+  
+  # Bits per sample (16 or 24)
+  sample_width: 16
+  
+  # Chunk size (smaller = lower latency, higher CPU)
+  chunk_size: 1024
+
+# AirPlay Output Settings
+airplay_output:
+  # Target device name (use --discover to find devices)
+  # Leave as null to manually select on startup
+  device_name: null
+  
+  # Auto-reconnect on connection loss
+  auto_reconnect: true
+  
+  # Maximum reconnection attempts
+  max_reconnect_attempts: 10
+  
+  # Reconnect delay in seconds
+  reconnect_delay: 5
+
+# Audio Processing
+audio_processing:
+  # Enable volume normalization
+  normalize: false
+  
+  # Volume boost (1.0 = no change, 0-2.0 recommended)
+  volume_gain: 1.0
+  
+  # Enable noise gate (reduces background noise)
+  noise_gate: false
+  
+  # Noise gate threshold in dB
+  noise_gate_threshold: -50
+
+# Network Settings
+network:
+  # Network interface to use (null for auto)
+  interface: null
+  
+  # Discovery timeout in seconds
+  discovery_timeout: 10
+  
+  # Enable IPv6
+  ipv6: false
+
+# Logging
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR
+  level: INFO
+  
+  # Log to file
+  log_to_file: true
+  
+  # Log file path
+  log_file: turntable-airplay.log
+  
+  # Max log file size in MB
+  max_log_size: 10
+

@@ -1,0 +1,26 @@
+[Unit]
+Description=Turntable AirPlay Sender
+After=network.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=audio
+WorkingDirectory=/home/pi/turntable-airplay-sender
+ExecStart=/usr/bin/python3 /home/pi/turntable-airplay-sender/main.py --config /home/pi/turntable-airplay-sender/config.yaml
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Environment
+Environment="PYTHONUNBUFFERED=1"
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+

@@ -1,0 +1,24 @@
+# Audio capture and processing
+pyaudio==0.2.14
+numpy==1.24.3
+
+# AirPlay protocol support
+# Note: pyatv provides AirPlay support but is primarily for Apple TV control
+# We'll use a combination of libraries
+pyatv==0.14.5
+zeroconf==0.131.0
+
+# Network and async support
+aiohttp==3.9.1
+async-timeout==4.0.3
+
+# Configuration
+PyYAML==6.0.1
+
+# Logging and utilities
+colorlog==6.8.0
+click==8.1.7
+
+# Audio encoding
+pydub==0.25.1
+
