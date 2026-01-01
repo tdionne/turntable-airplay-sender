@@ -1,0 +1,23 @@
+[Unit]
+Description=Turntable HTTP Streaming Server
+After=network.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=audio
+WorkingDirectory=/root/turntable-airplay-sender
+ExecStart=/root/turntable-airplay-sender/turntable-stream.sh
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Environment
+Environment="ALSA_DEVICE=plughw:2,0"
+Environment="STREAM_PORT=8000"
+
+[Install]
+WantedBy=multi-user.target
+
