@@ -161,17 +161,16 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
                     logger.debug(f"Streamed {bytes_read // 1024}KB so far")
                 
                 # Broadcast to all connected clients
-                if clients:
-                    dead_clients = []
-                    for client_queue in clients:
-                        try:
-                            client_queue.put_nowait(mp3_data)
-                        except queue.Full:
-                            # Client queue full, drop this chunk
-                            logger.debug("Client queue full, dropping chunk")
-                        except Exception as e:
-                            logger.debug(f"Client queue error: {e}")
-                            dead_clients.append(client_queue)
+                dead_clients = []
+                for client_queue in clients:
+                    try:
+                        client_queue.put_nowait(mp3_data)
+                    except queue.Full:
+                        # Client queue full, drop this chunk
+                        logger.debug("Client queue full, dropping chunk")
+                    except Exception as e:
+                        logger.debug(f"Client queue error: {e}")
+                        dead_clients.append(client_queue)
                 
                 # Clean up dead clients
                 for client in dead_clients:
@@ -180,8 +179,9 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
                         
             except Exception as e:
                 if is_running:
-                    logger.error(f"FFmpeg read error: {e}")
-                break
+                    logger.error(f"FFmpeg read error: {e}", exc_info=True)
+                    # Don't break - try to continue
+                    time.sleep(0.1)
                 
     except FileNotFoundError:
         logger.error("FFmpeg not found! Install with: sudo apt-get install ffmpeg")
