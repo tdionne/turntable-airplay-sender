@@ -18,11 +18,11 @@ def get_local_ip():
     return ip
 
 def create_playlists():
-    """Create M3U and PLS playlist files."""
+    """Create M3U playlist file."""
     local_ip = get_local_ip()
     stream_url = f"http://{local_ip}:8000/turntable.mp3"
     
-    # Create M3U playlist
+    # Create M3U playlist (most compatible with Sonos)
     m3u_content = f"""#EXTM3U
 #EXTINF:-1,Turntable
 {stream_url}
@@ -31,24 +31,11 @@ def create_playlists():
     with open('/root/turntable-airplay-sender/turntable.m3u', 'w') as f:
         f.write(m3u_content)
     
-    # Create PLS playlist
-    pls_content = f"""[playlist]
-NumberOfEntries=1
-File1={stream_url}
-Title1=Turntable
-Length1=-1
-Version=2
-"""
-    
-    with open('/root/turntable-airplay-sender/turntable.pls', 'w') as f:
-        f.write(pls_content)
-    
     print("=" * 60)
-    print("🎵 Playlist Files Created")
+    print("🎵 Playlist File Created")
     print("=" * 60)
     print()
     print(f"✅ Created: /root/turntable-airplay-sender/turntable.m3u")
-    print(f"✅ Created: /root/turntable-airplay-sender/turntable.pls")
     print()
     print(f"📻 Stream URL: {stream_url}")
     print()

@@ -47,6 +47,9 @@ class StreamHandler(BaseHTTPRequestHandler):
         self.send_header('Content-Type', 'audio/mpeg')
         self.send_header('Cache-Control', 'no-cache, no-store')
         self.send_header('Connection', 'close')
+        self.send_header('icy-name', 'Turntable')
+        self.send_header('icy-genre', 'Vinyl')
+        self.send_header('icy-br', '320')
         self.end_headers()
         logger.info(f"HEAD request from {self.client_address[0]}")
     
@@ -62,7 +65,11 @@ class StreamHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'audio/mpeg')
             self.send_header('Cache-Control', 'no-cache, no-store')
             self.send_header('Connection', 'close')
+            # ICY metadata headers for Sonos display
             self.send_header('icy-name', 'Turntable')
+            self.send_header('icy-genre', 'Vinyl')
+            self.send_header('icy-br', '320')
+            self.send_header('icy-description', 'Live from USB Turntable')
             self.end_headers()
             
             logger.info(f"✅ Client connected: {self.client_address[0]}")
