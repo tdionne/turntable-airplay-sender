@@ -2,17 +2,25 @@
 
 # Audio Input Settings
 audio_input:
-  # Device index (use --list-devices to find yours)
-  # Leave as null for auto-detection or specify index
+  # Use ALSA directly (recommended for Raspberry Pi)
+  # Set to true if PyAudio doesn't detect your USB turntable
+  use_alsa: true
+  
+  # ALSA device string (when use_alsa is true)
+  # Find your card number with: arecord -l
+  # Format: plughw:CARD,DEVICE (e.g., plughw:2,0 for card 2)
+  alsa_device: "plughw:2,0"
+  
+  # PyAudio device index (when use_alsa is false)
+  # Use --list-devices to find yours
   device_index: null
   
-  # Alternative: Device name substring to search for
-  # Useful when PyAudio enumeration doesn't work
+  # Alternative: Device name substring to search for (PyAudio only)
   # Examples: "USB AUDIO", "CODEC", null
   device_name: null
   
   # Sample rate (44100 for CD quality, 48000 for high quality)
-  sample_rate: 44100
+  sample_rate: 48000
   
   # Channels (2 for stereo)
   channels: 2

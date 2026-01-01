@@ -1,5 +1,6 @@
 # Audio capture and processing
 pyaudio==0.2.14
+pyalsaaudio==0.10.0
 numpy==1.24.3
 
 # AirPlay protocol support

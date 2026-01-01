@@ -16,6 +16,7 @@ import yaml
 import colorlog
 
 from audio_capture import AudioCapture
+from audio_capture_alsa import AudioCaptureALSA
 from airplay_sender import AirPlaySender, AudioFormat
 from device_discovery import discover_airplay_devices, find_device_by_name
 
@@ -90,8 +91,10 @@ def load_config(config_path: str) -> dict:
               help='List available audio input devices')
 @click.option('--discover', is_flag=True, 
               help='Discover AirPlay devices on network')
+@click.option('--use-alsa', is_flag=True, 
+              help='Use ALSA directly instead of PyAudio (recommended for Raspberry Pi)')
 @click.option('--verbose', '-v', is_flag=True, help='Enable verbose logging')
-def cli(ctx, config, device, list_devices, discover, verbose):
+def cli(ctx, config, device, list_devices, discover, use_alsa, verbose):
     """Turntable AirPlay Sender - Stream turntable audio to Sonos via AirPlay 2."""
     
     # Load configuration
@@ -106,7 +109,7 @@ def cli(ctx, config, device, list_devices, discover, verbose):
     
     # Handle special commands
     if list_devices:
-        list_audio_devices()
+        list_audio_devices(use_alsa=use_alsa)
         return
     
     if discover:
@@ -121,36 +124,62 @@ def cli(ctx, config, device, list_devices, discover, verbose):
             sys.exit(1)
         
         device_name = device or cfg.get('airplay_output', {}).get('device_name')
-        run_streamer(cfg, device_name)
+        # Check if ALSA should be used (from flag or config)
+        use_alsa_mode = use_alsa or cfg.get('audio_input', {}).get('use_alsa', False)
+        run_streamer(cfg, device_name, use_alsa=use_alsa_mode)
 
 
-def list_audio_devices():
+def list_audio_devices(use_alsa: bool = False):
     """List all available audio input devices."""
     print("\n📻 Available Audio Input Devices:\n")
     
-    with AudioCapture() as capture:
-        devices = capture.list_devices()
+    if use_alsa:
+        # Use ALSA directly
+        print("Using ALSA device enumeration (recommended for Raspberry Pi)\n")
+        devices = AudioCaptureALSA.list_devices()
         
         if not devices:
-            print("⚠️  No audio input devices found by PyAudio.")
-            print("\nTroubleshooting:")
-            print("  1. Check hardware detection:")
-            print("     arecord -l")
-            print()
-            print("  2. If you see your device in arecord, try specifying by card:")
-            print("     In config.yaml, you can use ALSA device string:")
-            print("     audio_input:")
-            print("       device_name: 'plughw:2,0'  # where 2 is your card number")
-            print()
-            print("  3. Try reinstalling PyAudio:")
-            print("     pip uninstall pyaudio")
-            print("     pip install pyaudio")
+            print("⚠️  No ALSA capture devices found.")
+            print("\nCheck with: arecord -l")
             return
         
         for dev in devices:
-            print(f"  [{dev['index']}] {dev['name']}")
-            print(f"      Channels: {dev['channels']}, Sample Rate: {dev['sample_rate']} Hz")
+            print(f"  Card {dev['card']}: {dev['name']}")
+            print(f"      Device string: {dev['device_string']}")
             print()
+        
+        print("\n💡 To use ALSA mode, in config.yaml set:")
+        print("   audio_input:")
+        print("     use_alsa: true")
+        print("     alsa_device: 'plughw:X,0'  # where X is your card number")
+        
+    else:
+        # Use PyAudio
+        print("Using PyAudio device enumeration")
+        print("(If this doesn't work, try --use-alsa flag)\n")
+        
+        with AudioCapture() as capture:
+            devices = capture.list_devices()
+            
+            if not devices:
+                print("⚠️  No audio input devices found by PyAudio.")
+                print("\nTroubleshooting:")
+                print("  1. Check hardware detection:")
+                print("     arecord -l")
+                print()
+                print("  2. Try ALSA mode instead:")
+                print("     python3 main.py --list-devices --use-alsa")
+                print()
+                print("  3. In config.yaml, set:")
+                print("     audio_input:")
+                print("       use_alsa: true")
+                print("       alsa_device: 'plughw:2,0'  # your card number from arecord -l")
+                return
+            
+            for dev in devices:
+                print(f"  [{dev['index']}] {dev['name']}")
+                print(f"      Channels: {dev['channels']}, Sample Rate: {dev['sample_rate']} Hz")
+                print()
 
 
 def discover_devices(cfg: dict):
@@ -176,7 +205,7 @@ def discover_devices(cfg: dict):
         print()
 
 
-def run_streamer(cfg: dict, device_name: str):
+def run_streamer(cfg: dict, device_name: str, use_alsa: bool = False):
     """Run the audio streamer."""
     logger = logging.getLogger(__name__)
     
@@ -200,14 +229,29 @@ def run_streamer(cfg: dict, device_name: str):
     
     # Setup audio capture
     audio_cfg = cfg.get('audio_input', {})
-    capture = AudioCapture(
-        device_index=audio_cfg.get('device_index'),
-        device_name=audio_cfg.get('device_name'),
-        sample_rate=audio_cfg.get('sample_rate', 44100),
-        channels=audio_cfg.get('channels', 2),
-        chunk_size=audio_cfg.get('chunk_size', 1024),
-        sample_width=audio_cfg.get('sample_width', 16)
-    )
+    
+    if use_alsa:
+        # Use ALSA directly
+        logger.info("Using ALSA audio capture")
+        alsa_device = audio_cfg.get('alsa_device', 'plughw:2,0')
+        capture = AudioCaptureALSA(
+            device=alsa_device,
+            sample_rate=audio_cfg.get('sample_rate', 48000),
+            channels=audio_cfg.get('channels', 2),
+            chunk_size=audio_cfg.get('chunk_size', 1024),
+            sample_width=audio_cfg.get('sample_width', 16)
+        )
+    else:
+        # Use PyAudio
+        logger.info("Using PyAudio audio capture")
+        capture = AudioCapture(
+            device_index=audio_cfg.get('device_index'),
+            device_name=audio_cfg.get('device_name'),
+            sample_rate=audio_cfg.get('sample_rate', 44100),
+            channels=audio_cfg.get('channels', 2),
+            chunk_size=audio_cfg.get('chunk_size', 1024),
+            sample_width=audio_cfg.get('sample_width', 16)
+        )
     
     # Apply audio processing settings
     processing_cfg = cfg.get('audio_processing', {})
