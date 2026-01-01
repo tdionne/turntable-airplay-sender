@@ -138,19 +138,35 @@ arecord -D plughw:1,0 -f cd test.wav
 - Ensure Raspberry Pi has adequate power supply
 - Check CPU usage: `htop`
 
-## Development
-
-### Project Structure
+## Project Structure
 
 ```
 turntable-airplay-sender/
-├── main.py              # Entry point
-├── audio_capture.py     # USB audio capture
-├── airplay_sender.py    # AirPlay 2 streaming
-├── device_discovery.py  # Network device discovery
-├── config.yaml          # Configuration file
-└── requirements.txt     # Python dependencies
+├── stream_server_v2.py        # Main HTTP streaming server (START HERE)
+├── audio_capture_alsa.py      # ALSA audio capture from USB turntable
+├── play_on_sonos.py           # Direct Sonos control via SoCo
+├── web_control.py             # Web interface for family
+├── create_playlist.py         # Generate .m3u playlist file
+├── device_discovery.py        # Discover AirPlay devices on network
+├── turntable-stream.service   # Systemd service for auto-start
+├── setup.sh                   # Initial setup script
+├── install-service.sh         # Install as system service
+├── requirements.txt           # Python dependencies
+├── config.example.yaml        # Configuration template
+└── README.md                  # This file
 ```
+
+## Main Components
+
+**For Daily Use:**
+- `stream_server_v2.py` - The main server that captures and streams audio
+- `play_on_sonos.py` - Command-line tool to play on specific Sonos speakers
+- `web_control.py` - Web interface for family members
+
+**For Setup:**
+- `setup.sh` - Run once to install dependencies
+- `create_playlist.py` - Generate playlist for Sonos Music Library
+- `install-service.sh` - Install as auto-starting service
 
 ## License
 
