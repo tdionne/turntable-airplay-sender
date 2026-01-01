@@ -61,23 +61,30 @@ if ! command -v ffmpeg &> /dev/null; then
 fi
 
 # Start streaming with FFmpeg
-# -re: Read input at native frame rate (prevents buffering entire file)
+# Use icecast format which allows multiple/persistent connections
+# -re: Read input at native frame rate
 # -f alsa: ALSA input format
 # -thread_queue_size: Increase buffer to prevent frame drops
-ffmpeg -hide_banner -loglevel warning \
-       -thread_queue_size 512 \
-       -f alsa \
-       -i "$DEVICE" \
-       -acodec libmp3lame \
-       -ab "$BITRATE" \
-       -ac 2 \
-       -ar "$SAMPLE_RATE" \
-       -f mp3 \
-       -listen 1 \
-       -content_type audio/mpeg \
-       "http://0.0.0.0:${PORT}/turntable.mp3" 2>&1 | \
-       grep -v "Estimating duration" | \
-       while read line; do
-           echo "[$(date +%H:%M:%S)] $line"
-       done
+
+echo "Starting continuous stream (supports multiple connections)..."
+
+# Loop to restart on disconnect
+while true; do
+    ffmpeg -hide_banner -loglevel error \
+           -thread_queue_size 512 \
+           -f alsa \
+           -i "$DEVICE" \
+           -acodec libmp3lame \
+           -ab "$BITRATE" \
+           -ac 2 \
+           -ar "$SAMPLE_RATE" \
+           -f mp3 \
+           -listen 1 \
+           -content_type audio/mpeg \
+           "http://0.0.0.0:${PORT}/turntable.mp3" 2>&1
+    
+    # If FFmpeg exits, wait a moment and restart
+    echo "[$(date +%H:%M:%S)] Connection closed, restarting stream..."
+    sleep 1
+done
 
