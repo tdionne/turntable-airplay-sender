@@ -200,7 +200,13 @@ class WebHandler(BaseHTTPRequestHandler):
                 logger.error(f"API: Error in /api/speakers: {e}", exc_info=True)
                 self.send_error(500, f"Internal error: {e}")
             
-        elif self.path == '/api/play':
+        else:
+            self.send_response(404)
+            self.end_headers()
+    
+    def do_POST(self):
+        """Handle POST requests."""
+        if self.path == '/api/play':
             logger.info("API: Received play request")
             try:
                 content_length = int(self.headers['Content-Length'])
