@@ -25,7 +25,8 @@ STREAM_URL = f"http://{get_local_ip()}:8000/turntable.mp3"
 
 class WebHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        pass  # Suppress request logging
+        """Log HTTP requests."""
+        logger.info(f"{self.client_address[0]} - {format % args}")
     
     def do_GET(self):
         if self.path == '/':
@@ -169,54 +170,81 @@ class WebHandler(BaseHTTPRequestHandler):
             self.wfile.write(html.encode())
             
         elif self.path == '/api/speakers':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            
-            speakers = list(soco.discover()) or []
-            speaker_list = []
-            for s in speakers:
-                try:
-                    speaker_list.append({
-                        'name': s.player_name,
-                        'model': s.get_speaker_info().get('model_name', 'Sonos'),
-                        'ip': s.ip_address
-                    })
-                except:
-                    pass
-            
-            import json
-            self.wfile.write(json.dumps(speaker_list).encode())
+            logger.info("API: Discovering Sonos speakers...")
+            try:
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                
+                speakers = list(soco.discover()) or []
+                logger.info(f"API: Found {len(speakers)} speaker(s)")
+                
+                speaker_list = []
+                for s in speakers:
+                    try:
+                        speaker_info = {
+                            'name': s.player_name,
+                            'model': s.get_speaker_info().get('model_name', 'Sonos'),
+                            'ip': s.ip_address
+                        }
+                        speaker_list.append(speaker_info)
+                        logger.debug(f"API: Found speaker: {speaker_info['name']} at {speaker_info['ip']}")
+                    except Exception as e:
+                        logger.warning(f"API: Error getting speaker info: {e}")
+                
+                import json
+                response = json.dumps(speaker_list)
+                self.wfile.write(response.encode())
+                logger.info(f"API: Returned {len(speaker_list)} speaker(s) to client")
+            except Exception as e:
+                logger.error(f"API: Error in /api/speakers: {e}", exc_info=True)
+                self.send_error(500, f"Internal error: {e}")
             
         elif self.path == '/api/play':
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
-            
-            import json
-            data = json.loads(post_data.decode())
-            speaker_name = data.get('speaker')
-            
+            logger.info("API: Received play request")
             try:
+                content_length = int(self.headers['Content-Length'])
+                post_data = self.rfile.read(content_length)
+                
+                import json
+                data = json.loads(post_data.decode())
+                speaker_name = data.get('speaker')
+                logger.info(f"API: Request to play on speaker: {speaker_name}")
+                
+                logger.info("API: Discovering speakers...")
                 speakers = list(soco.discover()) or []
+                logger.info(f"API: Found {len(speakers)} speaker(s)")
+                
                 target = None
                 for s in speakers:
+                    logger.debug(f"API: Checking speaker: {s.player_name}")
                     if speaker_name.lower() in s.player_name.lower():
                         target = s
+                        logger.info(f"API: Matched speaker: {s.player_name}")
                         break
                 
                 if target:
+                    logger.info(f"API: Stopping current playback on {target.player_name}")
                     target.stop()
+                    
+                    logger.info(f"API: Clearing queue on {target.player_name}")
                     target.clear_queue()
+                    
+                    logger.info(f"API: Playing stream: {STREAM_URL}")
                     target.play_uri(STREAM_URL, title="Turntable")
                     
                     self.send_response(200)
                     self.send_header('Content-type', 'application/json')
                     self.end_headers()
                     self.wfile.write(json.dumps({'success': True}).encode())
+                    logger.info(f"API: ✅ Successfully started playback on {target.player_name}")
                 else:
-                    raise Exception("Speaker not found")
+                    error_msg = f"Speaker '{speaker_name}' not found"
+                    logger.error(f"API: {error_msg}")
+                    raise Exception(error_msg)
                     
             except Exception as e:
+                logger.error(f"API: ❌ Error in /api/play: {e}", exc_info=True)
                 self.send_response(500)
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
