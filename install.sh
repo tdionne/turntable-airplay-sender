@@ -8,7 +8,6 @@ set -e
 
 # Configuration
 INSTALL_DIR="/opt/turntable-streaming"
-CONFIG_DIR="/etc/turntable-streaming"
 DOC_DIR="/usr/share/doc/turntable-streaming"
 VENV_DIR="/opt/turntable-streaming/venv"
 
@@ -32,7 +31,6 @@ fi
 # Create directories
 echo "Creating installation directories..."
 mkdir -p "$INSTALL_DIR"
-mkdir -p "$CONFIG_DIR"
 mkdir -p "$DOC_DIR"
 
 # Copy Python files
@@ -44,13 +42,16 @@ cp web_control.py "$INSTALL_DIR/"
 cp create_playlist.py "$INSTALL_DIR/"
 cp device_discovery.py "$INSTALL_DIR/"
 cp add_to_sonos_favorites.py "$INSTALL_DIR/"
+cp test_autoplay.py "$INSTALL_DIR/"
 cp requirements.txt "$INSTALL_DIR/"
 
-# Copy configuration
+# Copy configuration files
 echo "Installing configuration..."
-if [ ! -f "$CONFIG_DIR/config.yaml" ]; then
-    cp config.example.yaml "$CONFIG_DIR/config.yaml"
-    echo -e "${YELLOW}Created default config: $CONFIG_DIR/config.yaml${NC}"
+cp config.example.yaml "$INSTALL_DIR/"
+if [ ! -f "$INSTALL_DIR/config.yaml" ]; then
+    cp config.example.yaml "$INSTALL_DIR/config.yaml"
+    echo -e "${YELLOW}Created default config: $INSTALL_DIR/config.yaml${NC}"
+    echo -e "${YELLOW}Edit this file to enable auto-play and customize settings${NC}"
 else
     echo "Config already exists, skipping..."
 fi
@@ -59,6 +60,7 @@ fi
 echo "Installing documentation..."
 cp README.md QUICKSTART.md INSTALLATION.md TECHNICAL.md "$DOC_DIR/"
 cp HTTP_STREAMING.md FAMILY_INSTRUCTIONS.md "$DOC_DIR/"
+cp AUTO_PLAY.md AUTOPLAY_SUMMARY.md TESTING_AUTOPLAY.md "$DOC_DIR/"
 cp LICENSE "$DOC_DIR/"
 
 # Set permissions
@@ -104,19 +106,30 @@ echo -e "==========================================${NC}"
 echo
 echo "Files installed to:"
 echo "  Application: $INSTALL_DIR"
-echo "  Config:      $CONFIG_DIR/config.yaml"
+echo "  Config:      $INSTALL_DIR/config.yaml"
 echo "  Docs:        $DOC_DIR"
 echo
 echo "Next steps:"
-echo "  1. Edit config if needed: sudo nano $CONFIG_DIR/config.yaml"
+echo "  1. Edit config: sudo nano $INSTALL_DIR/config.yaml"
+echo "     - Enable auto-play: set 'enabled: true'"
+echo "     - Set speaker name: 'default_speaker: \"Living Room\"'"
+echo "     - Adjust volume gain if needed"
 echo "  2. Enable service: sudo systemctl enable turntable-stream"
 echo "  3. Start service:  sudo systemctl start turntable-stream"
 echo "  4. Check status:   sudo systemctl status turntable-stream"
+echo
+echo "Test auto-play detection:"
+echo "  Test detection:   $VENV_DIR/bin/python3 $INSTALL_DIR/test_autoplay.py"
 echo
 echo "Quick commands:"
 echo "  Play on Sonos:    $VENV_DIR/bin/python3 $INSTALL_DIR/play_on_sonos.py 'Speaker Name'"
 echo "  Web interface:    $VENV_DIR/bin/python3 $INSTALL_DIR/web_control.py"
 echo "  Create playlist:  $VENV_DIR/bin/python3 $INSTALL_DIR/create_playlist.py"
+echo
+echo "Documentation:"
+echo "  Quick start:      $DOC_DIR/QUICKSTART.md"
+echo "  Auto-play setup:  $DOC_DIR/AUTOPLAY_SUMMARY.md"
+echo "  Family guide:     $DOC_DIR/FAMILY_INSTRUCTIONS.md"
 echo
 echo -e "${YELLOW}You can now safely delete the git repository!${NC}"
 echo
