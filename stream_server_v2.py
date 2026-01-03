@@ -160,6 +160,8 @@ class StreamHandler(BaseHTTPRequestHandler):
     
     def do_GET(self):
         """Handle GET requests for the stream."""
+        global last_client_disconnect_time, clients_connect_times
+        
         if self.path != '/turntable.mp3':
             self.send_error(404, "Stream not found. Use: /turntable.mp3")
             return
@@ -187,7 +189,6 @@ class StreamHandler(BaseHTTPRequestHandler):
             
             # Track connection start time to detect health checks vs real playback
             connection_start = time.time()
-            global clients_connect_times
             clients_connect_times[id(client_queue)] = connection_start
             
             try:
@@ -212,7 +213,6 @@ class StreamHandler(BaseHTTPRequestHandler):
                     
             finally:
                 # Unsubscribe client
-                global last_client_disconnect_time, clients_connect_times
                 if client_queue in clients:
                     clients.remove(client_queue)
                 
