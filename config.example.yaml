@@ -64,10 +64,10 @@ auto_play:
   # Prevents false triggers from brief noise
   trigger_delay: 2.0
   
-  # Seconds of silence before resetting trigger (for repeat plays)
-  # Set higher if you flip records (30-60s recommended)
-  # Set lower for quick successive plays (10-20s)
-  silence_reset_duration: 30
+  # Seconds after all clients disconnect before resetting trigger
+  # Resets when Sonos switches to TV/stops, but not during record changes
+  # As long as something is playing, trigger stays active
+  reset_on_disconnect_delay: 10
   
   # Buffer size in seconds
   # Audio is buffered so playback starts from when needle dropped

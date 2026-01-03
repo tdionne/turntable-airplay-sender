@@ -39,10 +39,11 @@ auto_play_enabled = False
 auto_play_speaker = None
 auto_play_threshold = 500
 auto_play_trigger_delay = 2.0
-auto_play_silence_reset = 30.0
+auto_play_reset_on_disconnect = 10.0
 auto_play_triggered = False
 audio_level_history = []
 stream_url = None
+last_client_disconnect_time = None
 
 
 def load_config():
@@ -205,9 +206,15 @@ class StreamHandler(BaseHTTPRequestHandler):
                     
             finally:
                 # Unsubscribe client
+                global last_client_disconnect_time
                 if client_queue in clients:
                     clients.remove(client_queue)
                 logger.info(f"Client removed: {self.client_address[0]}")
+                
+                # Track when last client disconnects (for auto-play reset)
+                if len(clients) == 0:
+                    last_client_disconnect_time = time.time()
+                    logger.debug("All clients disconnected, tracking for auto-play reset")
                 
         except Exception as e:
             logger.error(f"Stream error: {e}")
@@ -236,7 +243,7 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
     
     if auto_play_enabled:
         logger.info(f"🎵 Auto-play: Enabled for speaker '{auto_play_speaker}'")
-        logger.info(f"🎵 Auto-play: Threshold={auto_play_threshold}, Delay={auto_play_trigger_delay}s, Reset={auto_play_silence_reset}s")
+        logger.info(f"🎵 Auto-play: Threshold={auto_play_threshold}, Delay={auto_play_trigger_delay}s, Reset after {auto_play_reset_on_disconnect}s disconnect")
     
     # Open ALSA PCM device for capture
     try:
@@ -331,7 +338,6 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
         
         # Main loop: read PCM from ALSA, detect needle drops, feed to FFmpeg
         trigger_time = None
-        silence_start_time = None
         
         while is_running:
             try:
@@ -344,6 +350,8 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
                 
                 # Auto-play detection (always monitor if enabled)
                 if auto_play_enabled:
+                    global auto_play_triggered, last_client_disconnect_time
+                    
                     rms_level = calculate_rms(pcm_data)
                     audio_level_history.append((time.time(), rms_level))
                     
@@ -353,11 +361,22 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
                         (t, lvl) for t, lvl in audio_level_history if t > cutoff_time
                     ]
                     
+                    # Check if we should reset trigger (all clients disconnected for too long)
+                    if auto_play_triggered and last_client_disconnect_time is not None:
+                        if len(clients) == 0:
+                            # No clients connected
+                            disconnect_duration = time.time() - last_client_disconnect_time
+                            if disconnect_duration >= auto_play_reset_on_disconnect:
+                                # Sonos has been disconnected long enough - user switched away
+                                logger.info(f"🎵 Auto-play: No clients for {disconnect_duration:.0f}s, resetting (speaker likely switched to TV/stopped)")
+                                auto_play_triggered = False
+                                last_client_disconnect_time = None
+                        else:
+                            # Clients reconnected, clear disconnect timer
+                            last_client_disconnect_time = None
+                    
                     # Check if audio is above threshold
                     if rms_level > auto_play_threshold:
-                        # Audio detected - reset silence timer
-                        silence_start_time = None
-                        
                         # Only trigger if not already triggered
                         if not auto_play_triggered:
                             if trigger_time is None:
@@ -377,22 +396,10 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
                                     threading.Thread(target=trigger_playback, daemon=True).start()
                                     trigger_time = None
                     else:
-                        # Audio below threshold (silence)
-                        
-                        # Reset trigger timer if we were waiting
+                        # Audio below threshold - reset trigger timer if we were waiting
                         if trigger_time is not None:
-                            logger.debug("Auto-play: Audio dropped below threshold, resetting trigger")
+                            logger.debug("Auto-play: Audio dropped below threshold, resetting trigger timer")
                             trigger_time = None
-                        
-                        # Track silence duration to reset auto_play_triggered
-                        if auto_play_triggered:
-                            if silence_start_time is None:
-                                silence_start_time = time.time()
-                            elif time.time() - silence_start_time >= auto_play_silence_reset:
-                                # Prolonged silence - needle was lifted, reset for next play
-                                logger.info(f"🎵 Auto-play: {auto_play_silence_reset}s silence detected, ready for next needle drop")
-                                auto_play_triggered = False
-                                silence_start_time = None
                     
                     # Log RMS level periodically
                     if len(audio_level_history) % 100 == 0:
@@ -458,7 +465,7 @@ def signal_handler(sig, frame):
 def main():
     """Main server function."""
     global is_running, auto_play_enabled, auto_play_speaker
-    global auto_play_threshold, auto_play_trigger_delay, auto_play_silence_reset, stream_url
+    global auto_play_threshold, auto_play_trigger_delay, auto_play_reset_on_disconnect, stream_url
     
     # Load configuration
     config = load_config()
@@ -482,7 +489,7 @@ def main():
     auto_play_speaker = auto_play_config.get('default_speaker', 'Living Room')
     auto_play_threshold = auto_play_config.get('audio_threshold', 500)
     auto_play_trigger_delay = auto_play_config.get('trigger_delay', 2.0)
-    auto_play_silence_reset = auto_play_config.get('silence_reset_duration', 30.0)
+    auto_play_reset_on_disconnect = auto_play_config.get('reset_on_disconnect_delay', 10.0)
     
     local_ip = get_local_ip()
     stream_url = f"http://{local_ip}:{PORT}/turntable.mp3"
@@ -502,8 +509,9 @@ def main():
         print(f"   Speaker:      {auto_play_speaker}")
         print(f"   Threshold:    {auto_play_threshold}")
         print(f"   Trigger delay: {auto_play_trigger_delay}s")
-        print(f"   Reset after:  {auto_play_silence_reset}s silence")
+        print(f"   Reset after:  {auto_play_reset_on_disconnect}s disconnect")
         print(f"\n💡 Drop the needle and playback will start automatically!")
+        print(f"💡 Stays active while playing - take your time finding records!")
     else:
         print(f"\n💡 To play on Sonos:")
         print(f"   python3 play_on_sonos.py")
