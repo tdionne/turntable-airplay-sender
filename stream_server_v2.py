@@ -39,6 +39,7 @@ auto_play_enabled = False
 auto_play_speaker = None
 auto_play_threshold = 500
 auto_play_trigger_delay = 2.0
+auto_play_silence_reset = 30.0
 auto_play_triggered = False
 audio_level_history = []
 stream_url = None
@@ -235,7 +236,7 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
     
     if auto_play_enabled:
         logger.info(f"🎵 Auto-play: Enabled for speaker '{auto_play_speaker}'")
-        logger.info(f"🎵 Auto-play: Threshold={auto_play_threshold}, Delay={auto_play_trigger_delay}s")
+        logger.info(f"🎵 Auto-play: Threshold={auto_play_threshold}, Delay={auto_play_trigger_delay}s, Reset={auto_play_silence_reset}s")
     
     # Open ALSA PCM device for capture
     try:
@@ -331,7 +332,6 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
         # Main loop: read PCM from ALSA, detect needle drops, feed to FFmpeg
         trigger_time = None
         silence_start_time = None
-        SILENCE_RESET_DURATION = 5.0  # Reset trigger after 5s of silence
         
         while is_running:
             try:
@@ -388,9 +388,9 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
                         if auto_play_triggered:
                             if silence_start_time is None:
                                 silence_start_time = time.time()
-                            elif time.time() - silence_start_time >= SILENCE_RESET_DURATION:
+                            elif time.time() - silence_start_time >= auto_play_silence_reset:
                                 # Prolonged silence - needle was lifted, reset for next play
-                                logger.info("🎵 Auto-play: Silence detected, ready for next needle drop")
+                                logger.info(f"🎵 Auto-play: {auto_play_silence_reset}s silence detected, ready for next needle drop")
                                 auto_play_triggered = False
                                 silence_start_time = None
                     
@@ -458,7 +458,7 @@ def signal_handler(sig, frame):
 def main():
     """Main server function."""
     global is_running, auto_play_enabled, auto_play_speaker
-    global auto_play_threshold, auto_play_trigger_delay, stream_url
+    global auto_play_threshold, auto_play_trigger_delay, auto_play_silence_reset, stream_url
     
     # Load configuration
     config = load_config()
@@ -482,6 +482,7 @@ def main():
     auto_play_speaker = auto_play_config.get('default_speaker', 'Living Room')
     auto_play_threshold = auto_play_config.get('audio_threshold', 500)
     auto_play_trigger_delay = auto_play_config.get('trigger_delay', 2.0)
+    auto_play_silence_reset = auto_play_config.get('silence_reset_duration', 30.0)
     
     local_ip = get_local_ip()
     stream_url = f"http://{local_ip}:{PORT}/turntable.mp3"
@@ -501,6 +502,7 @@ def main():
         print(f"   Speaker:      {auto_play_speaker}")
         print(f"   Threshold:    {auto_play_threshold}")
         print(f"   Trigger delay: {auto_play_trigger_delay}s")
+        print(f"   Reset after:  {auto_play_silence_reset}s silence")
         print(f"\n💡 Drop the needle and playback will start automatically!")
     else:
         print(f"\n💡 To play on Sonos:")

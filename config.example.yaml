@@ -64,6 +64,11 @@ auto_play:
   # Prevents false triggers from brief noise
   trigger_delay: 2.0
   
+  # Seconds of silence before resetting trigger (for repeat plays)
+  # Set higher if you flip records (30-60s recommended)
+  # Set lower for quick successive plays (10-20s)
+  silence_reset_duration: 30
+  
   # Buffer size in seconds
   # Audio is buffered so playback starts from when needle dropped
   # Recommended: 10 seconds (captures start of track)
