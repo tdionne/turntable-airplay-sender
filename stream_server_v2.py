@@ -184,6 +184,9 @@ class StreamHandler(BaseHTTPRequestHandler):
             # Subscribe this client to broadcasts
             clients.append(client_queue)
             
+            # Track connection start time to detect health checks vs real playback
+            connection_start = time.time()
+            
             try:
                 # Stream audio to client
                 while is_running:
@@ -209,12 +212,20 @@ class StreamHandler(BaseHTTPRequestHandler):
                 global last_client_disconnect_time
                 if client_queue in clients:
                     clients.remove(client_queue)
-                logger.info(f"Client removed: {self.client_address[0]}")
+                
+                connection_duration = time.time() - connection_start
+                logger.info(f"Client removed: {self.client_address[0]} (connected {connection_duration:.1f}s)")
                 
                 # Track when last client disconnects (for auto-play reset)
+                # Only count real connections (>5s), ignore health checks
                 if len(clients) == 0:
-                    last_client_disconnect_time = time.time()
-                    logger.debug("All clients disconnected, tracking for auto-play reset")
+                    if connection_duration > 5.0:
+                        # Real playback ended
+                        last_client_disconnect_time = time.time()
+                        logger.info("All clients disconnected (real playback), tracking for auto-play reset")
+                    else:
+                        # Brief health check, ignore
+                        logger.debug(f"Brief connection ({connection_duration:.1f}s), likely health check - ignoring for reset")
                 
         except Exception as e:
             logger.error(f"Stream error: {e}")
