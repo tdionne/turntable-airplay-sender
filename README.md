@@ -4,11 +4,14 @@ Stream audio from your USB turntable to Sonos speakers via AirPlay 2 on Raspberr
 
 ## Features
 
-- Real-time audio capture from USB turntable
-- AirPlay 2 streaming to Sonos systems
-- Low-latency audio processing
-- Automatic device discovery
-- CLI interface for easy control
+- 🎵 **Real-time audio streaming** from USB turntable to Sonos
+- 🔊 **High-quality MP3 encoding** (320kbps, 48kHz stereo)
+- 🎚️ **Volume boost** for quiet turntables (configurable gain)
+- 🤖 **Auto-play detection** - Drop the needle, playback starts automatically!
+- 📱 **Family-friendly** - Shows up in Sonos app Music Library
+- 🌐 **Web control interface** for easy speaker selection
+- 🔄 **Multi-client support** - Multiple speakers can listen simultaneously
+- ⚡ **Auto-start on boot** via systemd service
 
 ## Hardware Requirements
 
@@ -110,12 +113,36 @@ python3 web_control.py
 
 ## Configuration
 
-Edit `config.yaml` to customize:
+Edit `config.yaml` (or `/opt/turntable-streaming/config.yaml`) to customize:
 
-- Input device (USB turntable)
-- Target AirPlay device
-- Audio quality settings
-- Buffer sizes for latency tuning
+### Audio Settings
+- **Input device**: ALSA device string (e.g., `plughw:2,0`)
+- **Sample rate**: 44100 or 48000 Hz
+- **Volume gain**: Boost quiet turntables (1.0-3.0, default: 2.0)
+
+### Auto-Play Detection (Optional)
+Enable automatic playback when you drop the needle:
+
+```yaml
+auto_play:
+  enabled: true                    # Enable auto-play
+  default_speaker: "Living Room"   # Which Sonos speaker to use
+  audio_threshold: 500             # Sensitivity (300-1000)
+  trigger_delay: 2.0               # Seconds to wait before triggering
+```
+
+**How it works:**
+1. Server monitors audio levels in real-time
+2. When audio crosses threshold for `trigger_delay` seconds
+3. Automatically starts playback on your default Sonos speaker
+4. No need to manually start playback!
+
+**Testing auto-play:**
+```bash
+# Test detection without starting the server
+python3 test_autoplay.py
+# Drop the needle and watch for trigger
+```
 
 ## Troubleshooting
 
