@@ -330,6 +330,8 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
         
         # Main loop: read PCM from ALSA, detect needle drops, feed to FFmpeg
         trigger_time = None
+        silence_start_time = None
+        SILENCE_RESET_DURATION = 5.0  # Reset trigger after 5s of silence
         
         while is_running:
             try:
@@ -340,8 +342,8 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
                     time.sleep(0.001)
                     continue
                 
-                # Auto-play detection
-                if auto_play_enabled and not auto_play_triggered:
+                # Auto-play detection (always monitor if enabled)
+                if auto_play_enabled:
                     rms_level = calculate_rms(pcm_data)
                     audio_level_history.append((time.time(), rms_level))
                     
@@ -353,27 +355,44 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
                     
                     # Check if audio is above threshold
                     if rms_level > auto_play_threshold:
-                        if trigger_time is None:
-                            # Audio just crossed threshold
-                            trigger_time = time.time()
-                            logger.info(f"🎵 Auto-play: Audio detected (RMS={rms_level}), waiting {auto_play_trigger_delay}s...")
-                        else:
-                            # Check if we've been above threshold long enough
-                            if time.time() - trigger_time >= auto_play_trigger_delay:
-                                logger.info(f"🎵 Auto-play: Triggering playback!")
-                                auto_play_triggered = True
-                                
-                                # Trigger Sonos playback in background thread
-                                def trigger_playback():
-                                    trigger_sonos_playback(auto_play_speaker, stream_url)
-                                
-                                threading.Thread(target=trigger_playback, daemon=True).start()
-                                trigger_time = None
+                        # Audio detected - reset silence timer
+                        silence_start_time = None
+                        
+                        # Only trigger if not already triggered
+                        if not auto_play_triggered:
+                            if trigger_time is None:
+                                # Audio just crossed threshold
+                                trigger_time = time.time()
+                                logger.info(f"🎵 Auto-play: Audio detected (RMS={rms_level}), waiting {auto_play_trigger_delay}s...")
+                            else:
+                                # Check if we've been above threshold long enough
+                                if time.time() - trigger_time >= auto_play_trigger_delay:
+                                    logger.info(f"🎵 Auto-play: Triggering playback!")
+                                    auto_play_triggered = True
+                                    
+                                    # Trigger Sonos playback in background thread
+                                    def trigger_playback():
+                                        trigger_sonos_playback(auto_play_speaker, stream_url)
+                                    
+                                    threading.Thread(target=trigger_playback, daemon=True).start()
+                                    trigger_time = None
                     else:
-                        # Audio dropped below threshold, reset trigger
+                        # Audio below threshold (silence)
+                        
+                        # Reset trigger timer if we were waiting
                         if trigger_time is not None:
-                            logger.debug("Auto-play: Audio dropped below threshold, resetting")
+                            logger.debug("Auto-play: Audio dropped below threshold, resetting trigger")
                             trigger_time = None
+                        
+                        # Track silence duration to reset auto_play_triggered
+                        if auto_play_triggered:
+                            if silence_start_time is None:
+                                silence_start_time = time.time()
+                            elif time.time() - silence_start_time >= SILENCE_RESET_DURATION:
+                                # Prolonged silence - needle was lifted, reset for next play
+                                logger.info("🎵 Auto-play: Silence detected, ready for next needle drop")
+                                auto_play_triggered = False
+                                silence_start_time = None
                     
                     # Log RMS level periodically
                     if len(audio_level_history) % 100 == 0:
