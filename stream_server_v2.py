@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 # Global state
 is_running = True
 clients = []
+clients_connect_times = {}  # Track when each client connected
 ffmpeg_process = None
 
 # Auto-play state
@@ -186,6 +187,8 @@ class StreamHandler(BaseHTTPRequestHandler):
             
             # Track connection start time to detect health checks vs real playback
             connection_start = time.time()
+            global clients_connect_times
+            clients_connect_times[id(client_queue)] = connection_start
             
             try:
                 # Stream audio to client
@@ -209,9 +212,13 @@ class StreamHandler(BaseHTTPRequestHandler):
                     
             finally:
                 # Unsubscribe client
-                global last_client_disconnect_time
+                global last_client_disconnect_time, clients_connect_times
                 if client_queue in clients:
                     clients.remove(client_queue)
+                
+                # Clean up connection tracking
+                if id(client_queue) in clients_connect_times:
+                    del clients_connect_times[id(client_queue)]
                 
                 connection_duration = time.time() - connection_start
                 logger.info(f"Client removed: {self.client_address[0]} (connected {connection_duration:.1f}s)")
@@ -383,8 +390,17 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
                                 auto_play_triggered = False
                                 last_client_disconnect_time = None
                         else:
-                            # Clients reconnected, clear disconnect timer
-                            last_client_disconnect_time = None
+                            # Clients connected - check if any are sustained (>5s)
+                            # Only clear timer if there's a real playback connection, not health checks
+                            current_time = time.time()
+                            has_sustained_connection = any(
+                                (current_time - connect_time) > 5.0 
+                                for connect_time in clients_connect_times.values()
+                            )
+                            if has_sustained_connection:
+                                # Real playback resumed, clear disconnect timer
+                                logger.debug("Sustained client connection detected, clearing disconnect timer")
+                                last_client_disconnect_time = None
                     
                     # Check if audio is above threshold
                     if rms_level > auto_play_threshold:
