@@ -46,13 +46,42 @@ airplay_output:
   # Reconnect delay in seconds
   reconnect_delay: 5
 
+# Auto-Play Detection
+auto_play:
+  # Enable automatic playback when needle is detected
+  enabled: false
+  
+  # Default Sonos speaker for auto-play
+  # Example: "Living Room", "Kitchen", etc.
+  default_speaker: "Living Room"
+  
+  # Audio level threshold for needle detection (0-32767)
+  # Lower = more sensitive, Higher = less sensitive
+  # Recommended: 300-1000 depending on your turntable volume
+  audio_threshold: 500
+  
+  # Seconds of audio above threshold before triggering
+  # Prevents false triggers from brief noise
+  trigger_delay: 2.0
+  
+  # Buffer size in seconds
+  # Audio is buffered so playback starts from when needle dropped
+  # Recommended: 10 seconds (captures start of track)
+  buffer_seconds: 10
+  
+  # Auto-stop when record ends (prolonged silence)
+  auto_stop: false
+  
+  # Silence detection (seconds of silence before auto-stop)
+  silence_duration: 30
+
 # Audio Processing
 audio_processing:
   # Enable volume normalization
   normalize: false
   
-  # Volume boost (1.0 = no change, 0-2.0 recommended)
-  volume_gain: 1.0
+  # Volume boost (1.0 = no change, 2.0 = double, 0-3.0 recommended)
+  volume_gain: 2.0
   
   # Enable noise gate (reduces background noise)
   noise_gate: false
@@ -84,4 +113,3 @@ logging:
   
   # Max log file size in MB
   max_log_size: 10
-
