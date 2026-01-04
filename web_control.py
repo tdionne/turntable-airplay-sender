@@ -12,6 +12,7 @@ import json
 import yaml
 from pathlib import Path
 import subprocess
+import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -361,9 +362,20 @@ class WebHandler(BaseHTTPRequestHandler):
         try:
             logger.info("API: Attempting to restart turntable-stream service")
             
+            # Check if running as root
+            is_root = os.geteuid() == 0
+            
+            # Build command - skip sudo if already root
+            if is_root:
+                cmd = ['systemctl', 'restart', 'turntable-stream']
+                logger.info("Running as root, skipping sudo")
+            else:
+                cmd = ['sudo', 'systemctl', 'restart', 'turntable-stream']
+                logger.info("Running as user, using sudo")
+            
             # Try to restart the service
             result = subprocess.run(
-                ['sudo', 'systemctl', 'restart', 'turntable-stream'],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=10

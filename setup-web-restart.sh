@@ -3,6 +3,9 @@
 # Configure sudo to allow web_control.py to restart the streaming service
 # without requiring a password
 #
+# NOTE: Only needed if running web_control.py as non-root user
+# If you run web_control.py as root, this is NOT required
+#
 
 set -e
 
@@ -12,11 +15,16 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 echo "Configuring sudo for web_control restart capability..."
+echo ""
+echo "NOTE: If you run web_control.py as root, this setup is not needed."
+echo "The script auto-detects and skips sudo when running as root."
+echo ""
 
 # Create sudoers file for turntable restart
 cat > /etc/sudoers.d/turntable-web <<'EOF'
 # Allow any user to restart turntable-stream service without password
 # This enables the web control interface to restart the service
+# Only needed if web_control.py runs as non-root user
 ALL ALL=(ALL) NOPASSWD: /bin/systemctl restart turntable-stream
 EOF
 
@@ -29,6 +37,9 @@ if visudo -c -f /etc/sudoers.d/turntable-web; then
     echo ""
     echo "The web interface can now restart the streaming server."
     echo "Visit http://YOUR_PI_IP:8080/settings to try it!"
+    echo ""
+    echo "To run web_control as root instead (no sudo needed):"
+    echo "  sudo python3 web_control.py"
 else
     echo "❌ Error in sudoers configuration, removing file..."
     rm -f /etc/sudoers.d/turntable-web
