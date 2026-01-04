@@ -516,9 +516,9 @@ class WebHandler(BaseHTTPRequestHandler):
                 const result = await response.json();
                 
                 if (result.success) {{
-                    // Wait a moment for Sonos to update its state
-                    loadingText.textContent = 'Waiting for speaker to update...';
-                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    // Wait longer for Play (stream needs to start & buffer)
+                    loadingText.textContent = 'Waiting for stream to start...';
+                    await new Promise(resolve => setTimeout(resolve, 3000));
                     
                     // Force refresh speaker list (bypass cache)
                     loadingText.textContent = 'Updating display...';
