@@ -341,7 +341,8 @@ class WebHandler(BaseHTTPRequestHandler):
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
                 
-                speakers = list(soco.discover()) or []
+                discovered = soco.discover()
+                speakers = list(discovered) if discovered else []
                 logger.info(f"API: Found {len(speakers)} speaker(s)")
                 
                 speaker_list = []
@@ -480,7 +481,8 @@ class WebHandler(BaseHTTPRequestHandler):
                 logger.info(f"API: Request to play on speaker: {speaker_name}")
                 
                 logger.info("API: Discovering speakers...")
-                speakers = list(soco.discover()) or []
+                discovered = soco.discover()
+                speakers = list(discovered) if discovered else []
                 logger.info(f"API: Found {len(speakers)} speaker(s)")
                 
                 target = None

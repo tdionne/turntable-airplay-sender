@@ -34,7 +34,8 @@ def add_to_favorites():
     
     # Discover any Sonos speaker
     print("🔍 Finding Sonos speaker...")
-    speakers = list(soco.discover())
+    discovered = soco.discover()
+    speakers = list(discovered) if discovered else []
     
     if not speakers:
         print("❌ No Sonos speakers found")

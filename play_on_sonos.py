@@ -22,7 +22,8 @@ def get_local_ip():
 def discover_sonos():
     """Discover all Sonos speakers on network."""
     print("🔍 Discovering Sonos speakers...")
-    speakers = list(soco.discover())
+    discovered = soco.discover()
+    speakers = list(discovered) if discovered else []
     
     if not speakers:
         print("❌ No Sonos speakers found")

@@ -105,7 +105,8 @@ def trigger_sonos_playback(speaker_name, stream_url):
         logger.info(f"🎵 Auto-play: Discovering Sonos speakers...")
         
         # Discover Sonos devices
-        zones = list(soco.discover())
+        discovered = soco.discover()
+        zones = list(discovered) if discovered else []
         
         if not zones:
             logger.error("Auto-play: No Sonos speakers found")
