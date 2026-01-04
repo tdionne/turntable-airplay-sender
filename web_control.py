@@ -381,8 +381,21 @@ class WebHandler(BaseHTTPRequestHandler):
                     break
             
             if target:
-                logger.info(f"API: Stopping playback on {target.player_name}")
-                target.stop()
+                # Check if this speaker is the coordinator or a grouped member
+                try:
+                    coordinator = target.group.coordinator
+                    if coordinator == target:
+                        # This is the coordinator - stop entire group
+                        logger.info(f"API: Stopping coordinator {target.player_name} (stops entire group)")
+                        target.stop()
+                    else:
+                        # This is a grouped member - just remove from group
+                        logger.info(f"API: Removing {target.player_name} from group with {coordinator.player_name}")
+                        target.unjoin()
+                except Exception as e:
+                    # Fallback: just stop
+                    logger.warning(f"API: Could not determine group status, stopping: {e}")
+                    target.stop()
                 
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
