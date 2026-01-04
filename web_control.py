@@ -110,6 +110,90 @@ def discover_speakers_with_timeout(timeout=5):
     finally:
         executor.shutdown(wait=False)
 
+def get_speaker_info_with_timeout(speaker, timeout=3):
+    """
+    Get speaker info with timeout to prevent hanging on individual speaker queries.
+    Returns dict with speaker info or minimal info on timeout/error.
+    """
+    def _get_info():
+        is_playing = False
+        is_coordinator = False
+        coordinator_name = None
+        model = 'Sonos'
+        
+        try:
+            # Get basic info
+            transport_info = speaker.get_current_transport_info()
+            track_info = speaker.get_current_track_info()
+            
+            # Check group membership
+            coordinator = speaker.group.coordinator
+            if coordinator == speaker:
+                is_coordinator = True
+            else:
+                coordinator_name = coordinator.player_name
+            
+            # Check if playing turntable stream
+            if transport_info.get('current_transport_state') == 'PLAYING':
+                current_uri = track_info.get('uri', '')
+                if 'turntable.mp3' in current_uri or ':8000' in current_uri:
+                    is_playing = True
+            
+            # Check if grouped with coordinator playing turntable
+            if not is_playing and coordinator and coordinator != speaker:
+                coord_transport = coordinator.get_current_transport_info()
+                coord_track = coordinator.get_current_track_info()
+                if coord_transport.get('current_transport_state') == 'PLAYING':
+                    coord_uri = coord_track.get('uri', '')
+                    if 'turntable.mp3' in coord_uri or ':8000' in coord_uri:
+                        is_playing = True
+            
+            # Get model (cache-friendly, rarely changes)
+            try:
+                model = speaker.get_speaker_info().get('model_name', 'Sonos')
+            except:
+                pass
+                
+        except Exception as e:
+            logger.debug(f"Error getting speaker state for {speaker.player_name}: {e}")
+        
+        return {
+            'name': speaker.player_name,
+            'model': model,
+            'ip': speaker.ip_address,
+            'playing': is_playing,
+            'is_coordinator': is_coordinator,
+            'coordinator_name': coordinator_name
+        }
+    
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(_get_info)
+    
+    try:
+        return future.result(timeout=timeout)
+    except FuturesTimeoutError:
+        logger.warning(f"Timeout getting info for {speaker.player_name}")
+        return {
+            'name': speaker.player_name,
+            'model': 'Sonos',
+            'ip': speaker.ip_address,
+            'playing': False,
+            'is_coordinator': True,
+            'coordinator_name': None
+        }
+    except Exception as e:
+        logger.warning(f"Error getting info for {speaker.player_name}: {e}")
+        return {
+            'name': speaker.player_name,
+            'model': 'Sonos',
+            'ip': speaker.ip_address,
+            'playing': False,
+            'is_coordinator': True,
+            'coordinator_name': None
+        }
+    finally:
+        executor.shutdown(wait=False)
+
 class WebHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         """Log HTTP requests."""
@@ -388,63 +472,34 @@ class WebHandler(BaseHTTPRequestHandler):
                 
                 speakers = discover_speakers_with_timeout(timeout=5)
                 
+                # Query all speakers in parallel for speed
                 speaker_list = []
-                for s in speakers:
-                    try:
-                        # Check if speaker is playing the turntable stream
-                        is_playing = False
-                        is_coordinator = False
-                        coordinator_name = None
-                        
-                        try:
-                            transport_info = s.get_current_transport_info()
-                            track_info = s.get_current_track_info()
-                            
-                            # Check group membership
-                            coordinator = s.group.coordinator
-                            if coordinator == s:
-                                is_coordinator = True
-                            else:
-                                coordinator_name = coordinator.player_name
-                            
-                            # Check if playing and if URI contains our stream
-                            if transport_info.get('current_transport_state') == 'PLAYING':
-                                current_uri = track_info.get('uri', '')
-                                if 'turntable.mp3' in current_uri or ':8000' in current_uri:
-                                    is_playing = True
-                            
-                            # Also check if this speaker is in a group with a coordinator playing our stream
-                            if not is_playing and coordinator and coordinator != s:
-                                # This is a grouped speaker, check coordinator's state
-                                coord_transport = coordinator.get_current_transport_info()
-                                coord_track = coordinator.get_current_track_info()
-                                if coord_transport.get('current_transport_state') == 'PLAYING':
-                                    coord_uri = coord_track.get('uri', '')
-                                    if 'turntable.mp3' in coord_uri or ':8000' in coord_uri:
-                                        is_playing = True
-                        except Exception as e:
-                            logger.debug(f"Error checking speaker state: {e}")
-                            pass
-                        
-                        speaker_info = {
-                            'name': s.player_name,
-                            'model': s.get_speaker_info().get('model_name', 'Sonos'),
-                            'ip': s.ip_address,
-                            'playing': is_playing,
-                            'is_coordinator': is_coordinator,
-                            'coordinator_name': coordinator_name
-                        }
-                        speaker_list.append(speaker_info)
-                        logger.debug(f"API: Found speaker: {speaker_info['name']}, playing={is_playing}, coordinator={is_coordinator}, grouped_with={coordinator_name}")
-                    except Exception as e:
-                        logger.warning(f"API: Error getting speaker info: {e}")
+                if speakers:
+                    with ThreadPoolExecutor(max_workers=min(len(speakers), 10)) as executor:
+                        futures = [executor.submit(get_speaker_info_with_timeout, s, 3) for s in speakers]
+                        for future in futures:
+                            try:
+                                speaker_info = future.result(timeout=5)  # Overall timeout
+                                speaker_list.append(speaker_info)
+                            except Exception as e:
+                                logger.warning(f"Failed to get speaker info: {e}")
                 
                 response = json.dumps(speaker_list)
-                self.wfile.write(response.encode())
-                logger.info(f"API: Returned {len(speaker_list)} speaker(s) to client")
+                try:
+                    self.wfile.write(response.encode())
+                    logger.info(f"API: Returned {len(speaker_list)} speaker(s) to client")
+                except BrokenPipeError:
+                    logger.warning("API: Client disconnected before response could be sent (timeout)")
+                except Exception as e:
+                    logger.error(f"API: Error sending response: {e}")
+            except BrokenPipeError:
+                logger.warning("API: Client disconnected during /api/speakers (BrokenPipe)")
             except Exception as e:
                 logger.error(f"API: Error in /api/speakers: {e}", exc_info=True)
-                self.send_error(500, f"Internal error: {e}")
+                try:
+                    self.send_error(500, f"Internal error: {e}")
+                except (BrokenPipeError, ConnectionResetError):
+                    logger.warning("API: Could not send error response, client already disconnected")
             
         else:
             self.send_response(404)
