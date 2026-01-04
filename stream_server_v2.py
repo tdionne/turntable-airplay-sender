@@ -39,7 +39,7 @@ ffmpeg_process = None
 auto_play_enabled = False
 auto_play_speaker = None
 auto_play_power_on_threshold = 15000
-auto_play_power_on_cooldown = 10.0
+auto_play_power_on_cooldown = 30.0
 auto_play_threshold = 500
 auto_play_trigger_delay = 2.0
 auto_play_reset_on_disconnect = 10.0
@@ -228,11 +228,23 @@ class StreamHandler(BaseHTTPRequestHandler):
                 
                 # Track when last client disconnects (for auto-play reset)
                 # Only count real connections (>5s), ignore health checks
+                # Also ignore disconnects during power-on cooldown (user hasn't dropped needle yet)
                 if len(clients) == 0:
+                    global auto_play_cooldown_until
+                    
+                    # Check if we're in power-on cooldown
+                    in_cooldown = (auto_play_cooldown_until is not None and 
+                                   time.time() < auto_play_cooldown_until)
+                    
                     if connection_duration > 5.0:
-                        # Real playback ended
-                        last_client_disconnect_time = time.time()
-                        logger.info("All clients disconnected (real playback), tracking for auto-play reset")
+                        if in_cooldown:
+                            # Disconnect during power-on cooldown - Sonos timed out waiting for audio
+                            # Don't start reset timer, give user time to drop needle
+                            logger.info("All clients disconnected during power-on cooldown (no needle yet), ignoring for reset")
+                        else:
+                            # Real playback ended (after cooldown)
+                            last_client_disconnect_time = time.time()
+                            logger.info("All clients disconnected (real playback), tracking for auto-play reset")
                     else:
                         # Brief health check, ignore
                         logger.debug(f"Brief connection ({connection_duration:.1f}s), likely health check - ignoring for reset")
@@ -543,7 +555,7 @@ def main():
     auto_play_enabled = auto_play_config.get('enabled', False)
     auto_play_speaker = auto_play_config.get('default_speaker', 'Living Room')
     auto_play_power_on_threshold = auto_play_config.get('power_on_threshold', 15000)
-    auto_play_power_on_cooldown = auto_play_config.get('power_on_cooldown', 10.0)
+    auto_play_power_on_cooldown = auto_play_config.get('power_on_cooldown', 30.0)
     auto_play_threshold = auto_play_config.get('audio_threshold', 500)
     auto_play_trigger_delay = auto_play_config.get('trigger_delay', 2.0)
     auto_play_reset_on_disconnect = auto_play_config.get('reset_on_disconnect_delay', 10.0)

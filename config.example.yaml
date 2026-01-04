@@ -59,7 +59,7 @@ auto_play:
   # Power-on detection (cold start)
   # When turntable is turned ON, it sends a large RMS spike
   power_on_threshold: 15000        # RMS threshold for power-on spike (15K-25K typical)
-  power_on_cooldown: 10            # Seconds to ignore audio after power-on (prevents re-trigger)
+  power_on_cooldown: 30            # Seconds to drop needle after power-on (before disconnect resets trigger)
   
   # Needle-drop detection (warm start or if power-on missed)
   # When needle is placed on record
