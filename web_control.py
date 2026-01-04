@@ -115,6 +115,32 @@ class WebHandler(BaseHTTPRequestHandler):
             display: flex;
             justify-content: space-between;
             align-items: center;
+            position: relative;
+        }}
+        .speaker.playing {{
+            border-left: 4px solid #1DB954;
+        }}
+        .status-indicator {{
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+            background: #ccc;
+        }}
+        .status-indicator.playing {{
+            background: #1DB954;
+            animation: pulse 2s infinite;
+        }}
+        @keyframes pulse {{
+            0%, 100% {{ opacity: 1; }}
+            50% {{ opacity: 0.5; }}
+        }}
+        .status-text {{
+            font-size: 12px;
+            color: #1DB954;
+            font-weight: bold;
+            margin-left: 5px;
         }}
         button {{
             background: #1DB954;
@@ -178,10 +204,13 @@ class WebHandler(BaseHTTPRequestHandler):
                 
                 speakers.forEach(speaker => {{
                     const div = document.createElement('div');
-                    div.className = 'speaker';
+                    div.className = speaker.playing ? 'speaker playing' : 'speaker';
                     div.innerHTML = `
                         <div>
-                            <strong>${{speaker.name}}</strong><br>
+                            <span class="status-indicator ${{speaker.playing ? 'playing' : ''}}"></span>
+                            <strong>${{speaker.name}}</strong>
+                            ${{speaker.playing ? '<span class="status-text">Playing</span>' : ''}}
+                            <br>
                             <small>${{speaker.model}}</small>
                         </div>
                         <button onclick="play('${{speaker.name}}')">Play</button>
@@ -213,7 +242,11 @@ class WebHandler(BaseHTTPRequestHandler):
             }}
         }}
         
+        // Load speakers immediately
         loadSpeakers();
+        
+        // Refresh speaker status every 5 seconds
+        setInterval(loadSpeakers, 5000);
     </script>
 </body>
 </html>
@@ -234,13 +267,28 @@ class WebHandler(BaseHTTPRequestHandler):
                 speaker_list = []
                 for s in speakers:
                     try:
+                        # Check if speaker is playing the turntable stream
+                        is_playing = False
+                        try:
+                            transport_info = s.get_current_transport_info()
+                            track_info = s.get_current_track_info()
+                            
+                            # Check if playing and if URI contains our stream
+                            if transport_info.get('current_transport_state') == 'PLAYING':
+                                current_uri = track_info.get('uri', '')
+                                if 'turntable.mp3' in current_uri or ':8000' in current_uri:
+                                    is_playing = True
+                        except:
+                            pass
+                        
                         speaker_info = {
                             'name': s.player_name,
                             'model': s.get_speaker_info().get('model_name', 'Sonos'),
-                            'ip': s.ip_address
+                            'ip': s.ip_address,
+                            'playing': is_playing
                         }
                         speaker_list.append(speaker_info)
-                        logger.debug(f"API: Found speaker: {speaker_info['name']} at {speaker_info['ip']}")
+                        logger.debug(f"API: Found speaker: {speaker_info['name']} at {speaker_info['ip']}, playing={is_playing}")
                     except Exception as e:
                         logger.warning(f"API: Error getting speaker info: {e}")
                 
