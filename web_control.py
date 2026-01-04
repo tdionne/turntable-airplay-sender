@@ -13,6 +13,8 @@ import yaml
 from pathlib import Path
 import subprocess
 import os
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+import time
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -64,6 +66,49 @@ def get_local_ip():
     return ip
 
 STREAM_URL = f"http://{get_local_ip()}:8000/turntable.mp3"
+
+# Speaker discovery cache to prevent repeated slow network scans
+_speaker_cache = {'speakers': None, 'timestamp': 0}
+_cache_duration = 5  # seconds
+
+def discover_speakers_with_timeout(timeout=5):
+    """
+    Discover Sonos speakers with timeout to prevent hanging.
+    Uses caching to avoid repeated slow network scans.
+    """
+    global _speaker_cache
+    
+    # Return cached speakers if still fresh
+    now = time.time()
+    if _speaker_cache['speakers'] is not None and (now - _speaker_cache['timestamp']) < _cache_duration:
+        logger.debug(f"Using cached speakers ({len(_speaker_cache['speakers'])} found)")
+        return _speaker_cache['speakers']
+    
+    logger.debug(f"Discovering speakers (timeout={timeout}s)...")
+    
+    def _discover():
+        discovered = soco.discover()
+        return list(discovered) if discovered else []
+    
+    # Run discovery with timeout
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(_discover)
+    
+    try:
+        speakers = future.result(timeout=timeout)
+        _speaker_cache['speakers'] = speakers
+        _speaker_cache['timestamp'] = now
+        logger.info(f"Discovery completed: {len(speakers)} speaker(s) found")
+        return speakers
+    except FuturesTimeoutError:
+        logger.warning(f"Speaker discovery timed out after {timeout}s - network may be slow")
+        # Return cached speakers if available, otherwise empty list
+        return _speaker_cache['speakers'] if _speaker_cache['speakers'] is not None else []
+    except Exception as e:
+        logger.error(f"Speaker discovery error: {e}")
+        return _speaker_cache['speakers'] if _speaker_cache['speakers'] is not None else []
+    finally:
+        executor.shutdown(wait=False)
 
 class WebHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
@@ -341,9 +386,7 @@ class WebHandler(BaseHTTPRequestHandler):
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
                 
-                discovered = soco.discover()
-                speakers = list(discovered) if discovered else []
-                logger.info(f"API: Found {len(speakers)} speaker(s)")
+                speakers = discover_speakers_with_timeout(timeout=5)
                 
                 speaker_list = []
                 for s in speakers:
@@ -419,8 +462,7 @@ class WebHandler(BaseHTTPRequestHandler):
             logger.info(f"API: Request to stop speaker: {speaker_name}")
             
             logger.info("API: Discovering speakers...")
-            speakers = list(soco.discover()) or []
-            logger.info(f"API: Found {len(speakers)} speaker(s)")
+            speakers = discover_speakers_with_timeout(timeout=5)
             
             target = None
             for s in speakers:
@@ -481,9 +523,7 @@ class WebHandler(BaseHTTPRequestHandler):
                 logger.info(f"API: Request to play on speaker: {speaker_name}")
                 
                 logger.info("API: Discovering speakers...")
-                discovered = soco.discover()
-                speakers = list(discovered) if discovered else []
-                logger.info(f"API: Found {len(speakers)} speaker(s)")
+                speakers = discover_speakers_with_timeout(timeout=5)
                 
                 target = None
                 for s in speakers:
