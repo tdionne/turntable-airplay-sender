@@ -426,9 +426,13 @@ class WebHandler(BaseHTTPRequestHandler):
     </div>
     
     <script>
-        async function loadSpeakers() {{
+        async function loadSpeakers(forceRefresh = false) {{
             try {{
-                const response = await fetch('/api/speakers');
+                // Add cache-busting parameter for forced refreshes
+                const url = forceRefresh 
+                    ? `/api/speakers?_t=${{Date.now()}}` 
+                    : '/api/speakers';
+                const response = await fetch(url);
                 const speakers = await response.json();
                 
                 const container = document.getElementById('speakers');
@@ -507,14 +511,16 @@ class WebHandler(BaseHTTPRequestHandler):
                 
                 const result = await response.json();
                 
-                // Update loading text while refreshing
-                loadingText.textContent = 'Updating status...';
-                
                 if (result.success) {{
-                    // Refresh speaker list to show new status
-                    await loadSpeakers();
+                    // Wait a moment for Sonos to update its state
+                    loadingText.textContent = 'Waiting for speaker to update...';
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    
+                    // Force refresh speaker list (bypass cache)
+                    loadingText.textContent = 'Updating display...';
+                    await loadSpeakers(true);
+                    
                     overlay.classList.remove('active');
-                    alert('✅ Playing on ' + speakerName + '!\\n\\nPut a record on the turntable.');
                 }} else {{
                     overlay.classList.remove('active');
                     alert('❌ Error: ' + result.error);
@@ -542,12 +548,15 @@ class WebHandler(BaseHTTPRequestHandler):
                 
                 const result = await response.json();
                 
-                // Update loading text while refreshing
-                loadingText.textContent = 'Updating status...';
-                
                 if (result.success) {{
-                    // Refresh speaker list to show new status
-                    await loadSpeakers();
+                    // Wait a moment for Sonos to update its state
+                    loadingText.textContent = 'Waiting for speaker to update...';
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    
+                    // Force refresh speaker list (bypass cache)
+                    loadingText.textContent = 'Updating display...';
+                    await loadSpeakers(true);
+                    
                     overlay.classList.remove('active');
                 }} else {{
                     overlay.classList.remove('active');
