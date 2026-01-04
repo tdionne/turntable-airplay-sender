@@ -633,10 +633,14 @@ class WebHandler(BaseHTTPRequestHandler):
                             except Exception as e:
                                 logger.error(f"API: ❌ Failed to get speaker info for {speaker_name}: {e}", exc_info=True)
                 
+                # Log the actual speaker names and playing status being sent
+                speaker_summary = ', '.join([f"{s['name']}={'▶' if s['playing'] else '⏸'}" for s in speaker_list])
+                logger.info(f"API: Returning {len(speaker_list)} speakers: {speaker_summary}")
+                
                 response = json.dumps(speaker_list)
                 try:
                     self.wfile.write(response.encode())
-                    logger.info(f"API: Returned {len(speaker_list)} speaker(s) to client")
+                    logger.info(f"API: ✅ Response sent successfully")
                 except BrokenPipeError:
                     logger.warning("API: Client disconnected before response could be sent (timeout)")
                 except Exception as e:
