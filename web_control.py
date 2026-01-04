@@ -123,6 +123,22 @@ class WebHandler(BaseHTTPRequestHandler):
         .speaker.playing {{
             border-left: 4px solid #1DB954;
         }}
+        .speaker.grouped {{
+            margin-left: 30px;
+            margin-top: 5px;
+            margin-bottom: 5px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }}
+        .coordinator-badge {{
+            display: inline-block;
+            background: #1DB954;
+            color: white;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: 8px;
+            font-weight: bold;
+        }}
         .status-indicator {{
             display: inline-block;
             width: 10px;
@@ -214,18 +230,43 @@ class WebHandler(BaseHTTPRequestHandler):
                     return;
                 }}
                 
-                speakers.forEach(speaker => {{
+                // Sort speakers: coordinators first, then their grouped members
+                const sortedSpeakers = [];
+                const coordinators = speakers.filter(s => s.is_coordinator);
+                const members = speakers.filter(s => !s.is_coordinator);
+                
+                coordinators.forEach(coordinator => {{
+                    sortedSpeakers.push(coordinator);
+                    // Add grouped members right after their coordinator
+                    const groupedMembers = members.filter(m => m.coordinator_name === coordinator.name);
+                    sortedSpeakers.push(...groupedMembers);
+                }});
+                
+                // Add any ungrouped non-coordinator speakers (shouldn't happen, but just in case)
+                const orphans = members.filter(m => !sortedSpeakers.includes(m));
+                sortedSpeakers.push(...orphans);
+                
+                sortedSpeakers.forEach(speaker => {{
                     const div = document.createElement('div');
-                    div.className = speaker.playing ? 'speaker playing' : 'speaker';
+                    let className = speaker.playing ? 'speaker playing' : 'speaker';
+                    if (!speaker.is_coordinator && speaker.coordinator_name) {{
+                        className += ' grouped';
+                    }}
+                    div.className = className;
                     
                     const buttonAction = speaker.playing ? 'stop' : 'play';
                     const buttonText = speaker.playing ? 'Stop' : 'Play';
                     const buttonClass = speaker.playing ? 'stop-btn' : '';
                     
+                    const coordinatorBadge = speaker.is_coordinator && speaker.playing 
+                        ? '<span class="coordinator-badge">GROUP</span>' 
+                        : '';
+                    
                     div.innerHTML = `
                         <div>
                             <span class="status-indicator ${{speaker.playing ? 'playing' : ''}}"></span>
                             <strong>${{speaker.name}}</strong>
+                            ${{coordinatorBadge}}
                             ${{speaker.playing ? '<span class="status-text">Playing</span>' : ''}}
                             <br>
                             <small>${{speaker.model}}</small>
@@ -308,9 +349,19 @@ class WebHandler(BaseHTTPRequestHandler):
                     try:
                         # Check if speaker is playing the turntable stream
                         is_playing = False
+                        is_coordinator = False
+                        coordinator_name = None
+                        
                         try:
                             transport_info = s.get_current_transport_info()
                             track_info = s.get_current_track_info()
+                            
+                            # Check group membership
+                            coordinator = s.group.coordinator
+                            if coordinator == s:
+                                is_coordinator = True
+                            else:
+                                coordinator_name = coordinator.player_name
                             
                             # Check if playing and if URI contains our stream
                             if transport_info.get('current_transport_state') == 'PLAYING':
@@ -319,30 +370,28 @@ class WebHandler(BaseHTTPRequestHandler):
                                     is_playing = True
                             
                             # Also check if this speaker is in a group with a coordinator playing our stream
-                            if not is_playing:
-                                try:
-                                    coordinator = s.group.coordinator
-                                    if coordinator and coordinator != s:
-                                        # This is a grouped speaker, check coordinator's state
-                                        coord_transport = coordinator.get_current_transport_info()
-                                        coord_track = coordinator.get_current_track_info()
-                                        if coord_transport.get('current_transport_state') == 'PLAYING':
-                                            coord_uri = coord_track.get('uri', '')
-                                            if 'turntable.mp3' in coord_uri or ':8000' in coord_uri:
-                                                is_playing = True
-                                except:
-                                    pass
-                        except:
+                            if not is_playing and coordinator and coordinator != s:
+                                # This is a grouped speaker, check coordinator's state
+                                coord_transport = coordinator.get_current_transport_info()
+                                coord_track = coordinator.get_current_track_info()
+                                if coord_transport.get('current_transport_state') == 'PLAYING':
+                                    coord_uri = coord_track.get('uri', '')
+                                    if 'turntable.mp3' in coord_uri or ':8000' in coord_uri:
+                                        is_playing = True
+                        except Exception as e:
+                            logger.debug(f"Error checking speaker state: {e}")
                             pass
                         
                         speaker_info = {
                             'name': s.player_name,
                             'model': s.get_speaker_info().get('model_name', 'Sonos'),
                             'ip': s.ip_address,
-                            'playing': is_playing
+                            'playing': is_playing,
+                            'is_coordinator': is_coordinator,
+                            'coordinator_name': coordinator_name
                         }
                         speaker_list.append(speaker_info)
-                        logger.debug(f"API: Found speaker: {speaker_info['name']} at {speaker_info['ip']}, playing={is_playing}")
+                        logger.debug(f"API: Found speaker: {speaker_info['name']}, playing={is_playing}, coordinator={is_coordinator}, grouped_with={coordinator_name}")
                     except Exception as e:
                         logger.warning(f"API: Error getting speaker info: {e}")
                 
