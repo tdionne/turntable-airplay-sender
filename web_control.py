@@ -525,9 +525,9 @@ class WebHandler(BaseHTTPRequestHandler):
                 const result = await response.json();
                 
                 if (result.success) {{
-                    // Wait longer for Play (stream needs to start & buffer)
+                    // Wait longer for Play (TRANSITIONING → PLAYING takes time)
                     loadingText.textContent = 'Waiting for stream to start...';
-                    await new Promise(resolve => setTimeout(resolve, 4000));
+                    await new Promise(resolve => setTimeout(resolve, 6000));
                     
                     // Force refresh speaker list (bypass cache)
                     loadingText.textContent = 'Updating display...';
@@ -594,7 +594,17 @@ class WebHandler(BaseHTTPRequestHandler):
             self.wfile.write(html.encode())
             
         elif parsed_path == '/api/speakers':
-            logger.info("API: Discovering Sonos speakers...")
+            # Check if this is a forced refresh (from user action)
+            from urllib.parse import parse_qs
+            query_params = parse_qs(urlparse(self.path).query)
+            force_refresh = '_t' in query_params  # Cache-busting timestamp means forced refresh
+            
+            if force_refresh:
+                logger.info("API: 🔄 Forced refresh requested, clearing cache first")
+                invalidate_speaker_cache()
+            else:
+                logger.info("API: Discovering Sonos speakers...")
+            
             try:
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
