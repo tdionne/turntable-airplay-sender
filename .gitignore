@@ -47,3 +47,4 @@ htmlcov/
 *.mp3
 *.flac
 
+log*
