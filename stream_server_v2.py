@@ -38,10 +38,13 @@ ffmpeg_process = None
 # Auto-play state
 auto_play_enabled = False
 auto_play_speaker = None
+auto_play_power_on_threshold = 15000
+auto_play_power_on_cooldown = 10.0
 auto_play_threshold = 500
 auto_play_trigger_delay = 2.0
 auto_play_reset_on_disconnect = 10.0
 auto_play_triggered = False
+auto_play_cooldown_until = None
 audio_level_history = []
 stream_url = None
 last_client_disconnect_time = None
@@ -260,8 +263,9 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
     logger.info(f"🔊 Volume gain: {volume_gain}x")
     
     if auto_play_enabled:
-        logger.info(f"🎵 Auto-play: Enabled for speaker '{auto_play_speaker}'")
-        logger.info(f"🎵 Auto-play: Threshold={auto_play_threshold}, Delay={auto_play_trigger_delay}s, Reset after {auto_play_reset_on_disconnect}s disconnect")
+        logger.info(f"🎵 Auto-play: Enabled for speaker '{auto_play_speaker}' (Dual Detection)")
+        logger.info(f"🎵 Auto-play: Power-on={auto_play_power_on_threshold} RMS, Needle-drop={auto_play_threshold} RMS/{auto_play_trigger_delay}s")
+        logger.info(f"🎵 Auto-play: Reset after {auto_play_reset_on_disconnect}s disconnect")
     
     # Open ALSA PCM device for capture
     try:
@@ -368,13 +372,14 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
                 
                 # Auto-play detection (always monitor if enabled)
                 if auto_play_enabled:
-                    global auto_play_triggered, last_client_disconnect_time
+                    global auto_play_triggered, auto_play_cooldown_until, last_client_disconnect_time
                     
                     rms_level = calculate_rms(pcm_data)
                     audio_level_history.append((time.time(), rms_level))
+                    current_time = time.time()
                     
                     # Keep only recent history (last 10 seconds)
-                    cutoff_time = time.time() - 10.0
+                    cutoff_time = current_time - 10.0
                     audio_level_history = [
                         (t, lvl) for t, lvl in audio_level_history if t > cutoff_time
                     ]
@@ -383,16 +388,16 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
                     if auto_play_triggered and last_client_disconnect_time is not None:
                         if len(clients) == 0:
                             # No clients connected
-                            disconnect_duration = time.time() - last_client_disconnect_time
+                            disconnect_duration = current_time - last_client_disconnect_time
                             if disconnect_duration >= auto_play_reset_on_disconnect:
                                 # Sonos has been disconnected long enough - user switched away
                                 logger.info(f"🎵 Auto-play: No clients for {disconnect_duration:.0f}s, resetting (speaker likely switched to TV/stopped)")
                                 auto_play_triggered = False
+                                auto_play_cooldown_until = None
                                 last_client_disconnect_time = None
                         else:
                             # Clients connected - check if any are sustained (>5s)
                             # Only clear timer if there's a real playback connection, not health checks
-                            current_time = time.time()
                             has_sustained_connection = any(
                                 (current_time - connect_time) > 5.0 
                                 for connect_time in clients_connect_times.values()
@@ -402,17 +407,39 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
                                 logger.debug("Sustained client connection detected, clearing disconnect timer")
                                 last_client_disconnect_time = None
                     
-                    # Check if audio is above threshold
-                    if rms_level > auto_play_threshold:
-                        # Only trigger if not already triggered
-                        if not auto_play_triggered:
+                    # Check if we're in cooldown period (after power-on spike)
+                    if auto_play_cooldown_until is not None:
+                        if current_time < auto_play_cooldown_until:
+                            # Still in cooldown, ignore audio
+                            continue
+                        else:
+                            # Cooldown expired
+                            auto_play_cooldown_until = None
+                    
+                    # DUAL DETECTION: Power-on spike OR needle-drop
+                    if not auto_play_triggered:
+                        # Detection 1: Power-on spike (cold start)
+                        if rms_level > auto_play_power_on_threshold:
+                            logger.info(f"⚡ Auto-play: Power-on detected! (RMS={rms_level}) Triggering immediately...")
+                            auto_play_triggered = True
+                            auto_play_cooldown_until = current_time + auto_play_power_on_cooldown
+                            
+                            # Trigger Sonos playback in background thread
+                            def trigger_playback():
+                                trigger_sonos_playback(auto_play_speaker, stream_url)
+                            
+                            threading.Thread(target=trigger_playback, daemon=True).start()
+                            trigger_time = None
+                            
+                        # Detection 2: Needle-drop (warm start or if power-on missed)
+                        elif rms_level > auto_play_threshold:
                             if trigger_time is None:
                                 # Audio just crossed threshold
-                                trigger_time = time.time()
-                                logger.info(f"🎵 Auto-play: Audio detected (RMS={rms_level}), waiting {auto_play_trigger_delay}s...")
+                                trigger_time = current_time
+                                logger.info(f"🎵 Auto-play: Needle-drop detected (RMS={rms_level}), waiting {auto_play_trigger_delay}s...")
                             else:
                                 # Check if we've been above threshold long enough
-                                if time.time() - trigger_time >= auto_play_trigger_delay:
+                                if current_time - trigger_time >= auto_play_trigger_delay:
                                     logger.info(f"🎵 Auto-play: Triggering playback!")
                                     auto_play_triggered = True
                                     
@@ -422,15 +449,15 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
                                     
                                     threading.Thread(target=trigger_playback, daemon=True).start()
                                     trigger_time = None
-                    else:
-                        # Audio below threshold - reset trigger timer if we were waiting
-                        if trigger_time is not None:
-                            logger.debug("Auto-play: Audio dropped below threshold, resetting trigger timer")
-                            trigger_time = None
+                        else:
+                            # Audio below both thresholds - reset needle-drop trigger timer if waiting
+                            if trigger_time is not None:
+                                logger.debug("Auto-play: Audio dropped below threshold, resetting trigger timer")
+                                trigger_time = None
                     
                     # Log RMS level periodically
                     if len(audio_level_history) % 100 == 0:
-                        logger.debug(f"Audio RMS: {rms_level} (threshold: {auto_play_threshold})")
+                        logger.debug(f"Audio RMS: {rms_level} (power-on: {auto_play_power_on_threshold}, needle: {auto_play_threshold})")
                 
                 # Feed PCM data to FFmpeg
                 if ffmpeg_process and ffmpeg_process.poll() is None:
@@ -492,6 +519,7 @@ def signal_handler(sig, frame):
 def main():
     """Main server function."""
     global is_running, auto_play_enabled, auto_play_speaker
+    global auto_play_power_on_threshold, auto_play_power_on_cooldown
     global auto_play_threshold, auto_play_trigger_delay, auto_play_reset_on_disconnect, stream_url
     
     # Load configuration
@@ -514,6 +542,8 @@ def main():
     auto_play_config = config.get('auto_play', {})
     auto_play_enabled = auto_play_config.get('enabled', False)
     auto_play_speaker = auto_play_config.get('default_speaker', 'Living Room')
+    auto_play_power_on_threshold = auto_play_config.get('power_on_threshold', 15000)
+    auto_play_power_on_cooldown = auto_play_config.get('power_on_cooldown', 10.0)
     auto_play_threshold = auto_play_config.get('audio_threshold', 500)
     auto_play_trigger_delay = auto_play_config.get('trigger_delay', 2.0)
     auto_play_reset_on_disconnect = auto_play_config.get('reset_on_disconnect_delay', 10.0)
@@ -532,12 +562,13 @@ def main():
     print(f"✅ Properly encoded MP3 stream for Sonos")
     
     if auto_play_enabled:
-        print(f"\n🎵 Auto-play:    ENABLED")
+        print(f"\n🎵 Auto-play:    ENABLED (Dual Detection)")
         print(f"   Speaker:      {auto_play_speaker}")
-        print(f"   Threshold:    {auto_play_threshold}")
-        print(f"   Trigger delay: {auto_play_trigger_delay}s")
+        print(f"   Power-on:     {auto_play_power_on_threshold} RMS (cold start)")
+        print(f"   Needle-drop:  {auto_play_threshold} RMS for {auto_play_trigger_delay}s (warm start)")
         print(f"   Reset after:  {auto_play_reset_on_disconnect}s disconnect")
-        print(f"\n💡 Drop the needle and playback will start automatically!")
+        print(f"\n💡 Turn ON turntable → auto-starts (cold)")
+        print(f"💡 OR drop needle → auto-starts (warm)")
         print(f"💡 Stays active while playing - take your time finding records!")
     else:
         print(f"\n💡 To play on Sonos:")

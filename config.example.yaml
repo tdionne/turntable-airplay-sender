@@ -48,22 +48,25 @@ airplay_output:
 
 # Auto-Play Detection
 auto_play:
-  # Enable automatic playback when needle is detected
+  # Enable automatic playback (dual detection mode)
+  # Detects BOTH power-on spike AND needle drop
   enabled: false
   
   # Default Sonos speaker for auto-play
   # Example: "Living Room", "Kitchen", etc.
   default_speaker: "Living Room"
   
-  # Audio level threshold for needle detection (0-32767)
-  # Lower = more sensitive, Higher = less sensitive
-  # Recommended: 300-1000 depending on your turntable volume
-  audio_threshold: 500
+  # Power-on detection (cold start)
+  # When turntable is turned ON, it sends a large RMS spike
+  power_on_threshold: 15000        # RMS threshold for power-on spike (15K-25K typical)
+  power_on_cooldown: 10            # Seconds to ignore audio after power-on (prevents re-trigger)
   
-  # Seconds of audio above threshold before triggering
-  # Prevents false triggers from brief noise
-  trigger_delay: 2.0
+  # Needle-drop detection (warm start or if power-on missed)
+  # When needle is placed on record
+  audio_threshold: 500             # RMS threshold for normal audio (300-1000)
+  trigger_delay: 2.0               # Seconds of sustained audio before triggering
   
+  # Reset behavior
   # Seconds after all clients disconnect before resetting trigger
   # Resets when Sonos switches to TV/stops, but not during record changes
   # As long as something is playing, trigger stays active
