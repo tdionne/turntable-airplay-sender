@@ -430,20 +430,56 @@ class WebHandler(BaseHTTPRequestHandler):
                         break
                 
                 if target:
-                    logger.info(f"API: Stopping current playback on {target.player_name}")
-                    target.stop()
+                    # Check if any other speakers are already playing the turntable stream
+                    playing_coordinator = None
+                    for s in speakers:
+                        try:
+                            transport_info = s.get_current_transport_info()
+                            track_info = s.get_current_track_info()
+                            if transport_info.get('current_transport_state') == 'PLAYING':
+                                current_uri = track_info.get('uri', '')
+                                if 'turntable.mp3' in current_uri or ':8000' in current_uri:
+                                    # Found a speaker playing turntable - use its coordinator
+                                    playing_coordinator = s.group.coordinator
+                                    logger.info(f"API: Found existing playback on {playing_coordinator.player_name}")
+                                    break
+                        except:
+                            pass
                     
-                    logger.info(f"API: Clearing queue on {target.player_name}")
-                    target.clear_queue()
-                    
-                    logger.info(f"API: Playing stream: {STREAM_URL}")
-                    target.play_uri(STREAM_URL, title="Turntable")
-                    
-                    self.send_response(200)
-                    self.send_header('Content-type', 'application/json')
-                    self.end_headers()
-                    self.wfile.write(json.dumps({'success': True}).encode())
-                    logger.info(f"API: ✅ Successfully started playback on {target.player_name}")
+                    if playing_coordinator and playing_coordinator != target:
+                        # Join existing group
+                        logger.info(f"API: Joining {target.player_name} to group with {playing_coordinator.player_name}")
+                        target.join(playing_coordinator)
+                        
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({'success': True}).encode())
+                        logger.info(f"API: ✅ Successfully joined {target.player_name} to group")
+                    else:
+                        # Start fresh playback (no one else playing turntable)
+                        # Only stop if we're the coordinator or ungrouped
+                        try:
+                            if target.group.coordinator == target:
+                                logger.info(f"API: Stopping current playback on {target.player_name} (coordinator)")
+                                target.stop()
+                            else:
+                                logger.info(f"API: Unjoining {target.player_name} from group")
+                                target.unjoin()
+                        except:
+                            pass
+                        
+                        logger.info(f"API: Clearing queue on {target.player_name}")
+                        target.clear_queue()
+                        
+                        logger.info(f"API: Playing stream: {STREAM_URL}")
+                        target.play_uri(STREAM_URL, title="Turntable")
+                        
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({'success': True}).encode())
+                        logger.info(f"API: ✅ Successfully started playback on {target.player_name}")
                 else:
                     error_msg = f"Speaker '{speaker_name}' not found"
                     logger.error(f"API: {error_msg}")
