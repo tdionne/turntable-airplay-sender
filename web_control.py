@@ -622,14 +622,16 @@ class WebHandler(BaseHTTPRequestHandler):
                 # Query all speakers in parallel for speed (with caching)
                 speaker_list = []
                 if speakers:
+                    logger.info(f"API: Querying {len(speakers)} speakers in parallel...")
                     with ThreadPoolExecutor(max_workers=min(len(speakers), 10)) as executor:
-                        futures = [executor.submit(get_speaker_info_with_timeout, s, 8) for s in speakers]
-                        for future in futures:
+                        futures = [(s.player_name, executor.submit(get_speaker_info_with_timeout, s, 8)) for s in speakers]
+                        for speaker_name, future in futures:
                             try:
                                 speaker_info = future.result(timeout=10)  # Overall timeout per speaker
                                 speaker_list.append(speaker_info)
+                                logger.debug(f"API: Got info for {speaker_name}: playing={speaker_info.get('playing')}")
                             except Exception as e:
-                                logger.warning(f"Failed to get speaker info: {e}")
+                                logger.error(f"API: Failed to get speaker info for {speaker_name}: {e}", exc_info=True)
                 
                 response = json.dumps(speaker_list)
                 try:
