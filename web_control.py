@@ -158,6 +158,15 @@ class WebHandler(BaseHTTPRequestHandler):
         button:active {{
             background: #1aa34a;
         }}
+        button.stop-btn {{
+            background: #dc3545;
+        }}
+        button.stop-btn:hover {{
+            background: #c82333;
+        }}
+        button.stop-btn:active {{
+            background: #bd2130;
+        }}
         .info {{
             background: white;
             padding: 15px;
@@ -205,6 +214,11 @@ class WebHandler(BaseHTTPRequestHandler):
                 speakers.forEach(speaker => {{
                     const div = document.createElement('div');
                     div.className = speaker.playing ? 'speaker playing' : 'speaker';
+                    
+                    const buttonAction = speaker.playing ? 'stop' : 'play';
+                    const buttonText = speaker.playing ? 'Stop' : 'Play';
+                    const buttonClass = speaker.playing ? 'stop-btn' : '';
+                    
                     div.innerHTML = `
                         <div>
                             <span class="status-indicator ${{speaker.playing ? 'playing' : ''}}"></span>
@@ -213,7 +227,7 @@ class WebHandler(BaseHTTPRequestHandler):
                             <br>
                             <small>${{speaker.model}}</small>
                         </div>
-                        <button onclick="play('${{speaker.name}}')">Play</button>
+                        <button class="${{buttonClass}}" onclick="${{buttonAction}}('${{speaker.name}}')">${{buttonText}}</button>
                     `;
                     container.appendChild(div);
                 }});
@@ -234,11 +248,33 @@ class WebHandler(BaseHTTPRequestHandler):
                 const result = await response.json();
                 if (result.success) {{
                     alert('✅ Playing on ' + speakerName + '!\\n\\nPut a record on the turntable.');
+                    // Refresh speaker list to show new status
+                    loadSpeakers();
                 }} else {{
                     alert('❌ Error: ' + result.error);
                 }}
             }} catch (e) {{
                 alert('❌ Error starting playback');
+            }}
+        }}
+        
+        async function stop(speakerName) {{
+            try {{
+                const response = await fetch('/api/stop', {{
+                    method: 'POST',
+                    headers: {{'Content-Type': 'application/json'}},
+                    body: JSON.stringify({{speaker: speakerName}})
+                }});
+                
+                const result = await response.json();
+                if (result.success) {{
+                    // Refresh speaker list to show new status
+                    loadSpeakers();
+                }} else {{
+                    alert('❌ Error: ' + result.error);
+                }}
+            }} catch (e) {{
+                alert('❌ Error stopping playback');
             }}
         }}
         
@@ -278,6 +314,21 @@ class WebHandler(BaseHTTPRequestHandler):
                                 current_uri = track_info.get('uri', '')
                                 if 'turntable.mp3' in current_uri or ':8000' in current_uri:
                                     is_playing = True
+                            
+                            # Also check if this speaker is in a group with a coordinator playing our stream
+                            if not is_playing:
+                                try:
+                                    coordinator = s.group.coordinator
+                                    if coordinator and coordinator != s:
+                                        # This is a grouped speaker, check coordinator's state
+                                        coord_transport = coordinator.get_current_transport_info()
+                                        coord_track = coordinator.get_current_track_info()
+                                        if coord_transport.get('current_transport_state') == 'PLAYING':
+                                            coord_uri = coord_track.get('uri', '')
+                                            if 'turntable.mp3' in coord_uri or ':8000' in coord_uri:
+                                                is_playing = True
+                                except:
+                                    pass
                         except:
                             pass
                         
@@ -303,10 +354,56 @@ class WebHandler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
     
+    def handle_stop(self):
+        """Stop playback on a speaker."""
+        logger.info("API: Received stop request")
+        try:
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            
+            data = json.loads(post_data.decode())
+            speaker_name = data.get('speaker')
+            logger.info(f"API: Request to stop speaker: {speaker_name}")
+            
+            logger.info("API: Discovering speakers...")
+            speakers = list(soco.discover()) or []
+            logger.info(f"API: Found {len(speakers)} speaker(s)")
+            
+            target = None
+            for s in speakers:
+                logger.debug(f"API: Checking speaker: {s.player_name}")
+                if speaker_name.lower() in s.player_name.lower():
+                    target = s
+                    logger.info(f"API: Matched speaker: {s.player_name}")
+                    break
+            
+            if target:
+                logger.info(f"API: Stopping playback on {target.player_name}")
+                target.stop()
+                
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'success': True}).encode())
+                logger.info(f"API: ✅ Successfully stopped playback on {target.player_name}")
+            else:
+                error_msg = f"Speaker '{speaker_name}' not found"
+                logger.error(f"API: {error_msg}")
+                raise Exception(error_msg)
+                
+        except Exception as e:
+            logger.error(f"API: ❌ Error in /api/stop: {e}", exc_info=True)
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'success': False, 'error': str(e)}).encode())
+    
     def do_POST(self):
         """Handle POST requests."""
         if self.path == '/api/config':
             self.save_config_handler()
+        elif self.path == '/api/stop':
+            self.handle_stop()
         elif self.path == '/api/play':
             logger.info("API: Received play request")
             try:
