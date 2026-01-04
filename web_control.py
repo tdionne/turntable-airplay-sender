@@ -72,6 +72,12 @@ _speaker_cache = {'speakers': None, 'timestamp': 0}
 _speaker_info_cache = {}  # Cache per-speaker info
 _cache_duration = 15  # seconds (increased to reduce network load)
 
+def invalidate_speaker_cache():
+    """Clear speaker info cache to force fresh queries (called after play/stop)."""
+    global _speaker_info_cache
+    _speaker_info_cache.clear()
+    logger.debug("Speaker info cache invalidated")
+
 def discover_speakers_with_timeout(timeout=5):
     """
     Discover Sonos speakers with timeout to prevent hanging.
@@ -577,6 +583,9 @@ class WebHandler(BaseHTTPRequestHandler):
                     logger.warning(f"API: Could not determine group status, stopping: {e}")
                     target.stop()
                 
+                # Invalidate cache for immediate UI update
+                invalidate_speaker_cache()
+                
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
@@ -643,6 +652,9 @@ class WebHandler(BaseHTTPRequestHandler):
                         logger.info(f"API: Joining {target.player_name} to group with {playing_coordinator.player_name}")
                         target.join(playing_coordinator)
                         
+                        # Invalidate cache for immediate UI update
+                        invalidate_speaker_cache()
+                        
                         self.send_response(200)
                         self.send_header('Content-type', 'application/json')
                         self.end_headers()
@@ -666,6 +678,9 @@ class WebHandler(BaseHTTPRequestHandler):
                         
                         logger.info(f"API: Playing stream: {STREAM_URL}")
                         target.play_uri(STREAM_URL, title="Turntable")
+                        
+                        # Invalidate cache for immediate UI update
+                        invalidate_speaker_cache()
                         
                         self.send_response(200)
                         self.send_header('Content-type', 'application/json')
