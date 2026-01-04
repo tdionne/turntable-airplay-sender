@@ -15,6 +15,7 @@ import subprocess
 import os
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 import time
+from urllib.parse import urlparse
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -239,13 +240,16 @@ class WebHandler(BaseHTTPRequestHandler):
         logger.info(f"{self.client_address[0]} - {format % args}")
     
     def do_GET(self):
-        if self.path == '/settings':
+        # Parse path to strip query parameters (e.g., ?_t=timestamp for cache-busting)
+        parsed_path = urlparse(self.path).path
+        
+        if parsed_path == '/settings':
             self.send_settings_page()
-        elif self.path == '/api/config':
+        elif parsed_path == '/api/config':
             self.send_config()
-        elif self.path == '/api/restart':
+        elif parsed_path == '/api/restart':
             self.restart_service()
-        elif self.path == '/':
+        elif parsed_path == '/':
             self.send_response(200)
             self.send_header('Content-type', 'text/html; charset=utf-8')
             self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
@@ -580,7 +584,7 @@ class WebHandler(BaseHTTPRequestHandler):
             
             self.wfile.write(html.encode())
             
-        elif self.path == '/api/speakers':
+        elif parsed_path == '/api/speakers':
             logger.info("API: Discovering Sonos speakers...")
             try:
                 self.send_response(200)
