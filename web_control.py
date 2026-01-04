@@ -629,9 +629,9 @@ class WebHandler(BaseHTTPRequestHandler):
                             try:
                                 speaker_info = future.result(timeout=10)  # Overall timeout per speaker
                                 speaker_list.append(speaker_info)
-                                logger.debug(f"API: Got info for {speaker_name}: playing={speaker_info.get('playing')}")
+                                logger.info(f"API: ✅ Got info for {speaker_name}: playing={speaker_info.get('playing')}")
                             except Exception as e:
-                                logger.error(f"API: Failed to get speaker info for {speaker_name}: {e}", exc_info=True)
+                                logger.error(f"API: ❌ Failed to get speaker info for {speaker_name}: {e}", exc_info=True)
                 
                 response = json.dumps(speaker_list)
                 try:
