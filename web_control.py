@@ -261,9 +261,10 @@ class WebHandler(BaseHTTPRequestHandler):
         elif parsed_path == '/':
             self.send_response(200)
             self.send_header('Content-type', 'text/html; charset=utf-8')
-            self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+            self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
             self.send_header('Pragma', 'no-cache')
             self.send_header('Expires', '0')
+            self.send_header('X-Content-Type-Options', 'nosniff')
             self.end_headers()
             
             html = f"""
@@ -271,6 +272,9 @@ class WebHandler(BaseHTTPRequestHandler):
 <html>
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Turntable Control</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
@@ -418,13 +422,16 @@ class WebHandler(BaseHTTPRequestHandler):
     
     <script>
         async function loadSpeakers(forceRefresh = false) {{
+            console.log('[LoadSpeakers] Called with forceRefresh:', forceRefresh);
             try {{
                 // Add cache-busting parameter for forced refreshes
                 const url = forceRefresh 
                     ? `/api/speakers?_t=${{Date.now()}}` 
                     : '/api/speakers';
+                console.log('[LoadSpeakers] Fetching:', url);
                 const response = await fetch(url);
                 const speakers = await response.json();
+                console.log('[LoadSpeakers] Got', speakers.length, 'speakers');
                 
                 const container = document.getElementById('speakers');
                 container.innerHTML = '';
@@ -490,7 +497,12 @@ class WebHandler(BaseHTTPRequestHandler):
             const buttonId = `btn-${{speakerName.replace(/\s+/g, '-')}}`;
             const button = document.getElementById(buttonId);
             
-            if (!button) return;
+            console.log('[Play] Starting for:', speakerName, 'Button ID:', buttonId, 'Found:', !!button);
+            
+            if (!button) {{
+                console.error('[Play] Button not found!', buttonId);
+                return;
+            }}
             
             const originalText = button.textContent;
             
@@ -498,6 +510,7 @@ class WebHandler(BaseHTTPRequestHandler):
                 // Show loading on button
                 button.disabled = true;
                 button.innerHTML = '<span class="btn-spinner"></span>Starting...';
+                console.log('[Play] API call starting...');
                 
                 const response = await fetch('/api/play', {{
                     method: 'POST',
@@ -506,23 +519,28 @@ class WebHandler(BaseHTTPRequestHandler):
                 }});
                 
                 const result = await response.json();
+                console.log('[Play] API result:', result);
                 
                 if (result.success) {{
                     // Wait longer for Play (TRANSITIONING → PLAYING takes time)
                     button.innerHTML = '<span class="btn-spinner"></span>Connecting...';
+                    console.log('[Play] Waiting 6 seconds for TRANSITIONING→PLAYING...');
                     await new Promise(resolve => setTimeout(resolve, 6000));
                     
                     // Force refresh speaker list (bypass cache)
+                    console.log('[Play] Force refreshing speaker list...');
                     await loadSpeakers(true);
+                    console.log('[Play] Complete!');
                 }} else {{
                     button.disabled = false;
                     button.textContent = originalText;
                     alert('❌ Error: ' + result.error);
                 }}
             }} catch (e) {{
+                console.error('[Play] Error:', e);
                 button.disabled = false;
                 button.textContent = originalText;
-                alert('❌ Error starting playback');
+                alert('❌ Error starting playback: ' + e.message);
             }}
         }}
         
