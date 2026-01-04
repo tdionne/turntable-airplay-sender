@@ -422,20 +422,23 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
                                 last_client_disconnect_time = None
                     
                     # Check if we're in cooldown period (after power-on spike)
-                    # Only enforce cooldown if still triggered (prevents re-trigger from power-on noise)
-                    # If trigger was cleared (Sonos disconnected), allow needle-drop detection
-                    if auto_play_cooldown_until is not None:
-                        if current_time < auto_play_cooldown_until:
-                            if auto_play_triggered:
-                                # Still triggered and in cooldown, ignore audio (prevents re-trigger)
-                                continue
-                            # else: Trigger was cleared, allow needle-drop detection to proceed
-                        else:
-                            # Cooldown expired
-                            auto_play_cooldown_until = None
+                    # Cooldown prevents detection, but audio still flows to Sonos
+                    in_cooldown = (auto_play_cooldown_until is not None and 
+                                   current_time < auto_play_cooldown_until)
+                    
+                    if auto_play_cooldown_until is not None and current_time >= auto_play_cooldown_until:
+                        # Cooldown expired
+                        auto_play_cooldown_until = None
+                        in_cooldown = False
                     
                     # DUAL DETECTION: Power-on spike OR needle-drop
-                    if not auto_play_triggered:
+                    # During cooldown:
+                    #   - If triggered: Skip detection (prevents re-trigger from power-on noise)
+                    #   - If NOT triggered: Allow detection (Sonos disconnected, needle-drop can re-trigger)
+                    # Audio always processes normally for streaming
+                    skip_detection = in_cooldown and auto_play_triggered
+                    
+                    if not auto_play_triggered and not skip_detection:
                         # Detection 1: Power-on spike (cold start)
                         if rms_level > auto_play_power_on_threshold:
                             logger.info(f"⚡ Auto-play: Power-on detected! (RMS={rms_level}) Triggering immediately...")
