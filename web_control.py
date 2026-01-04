@@ -69,7 +69,8 @@ STREAM_URL = f"http://{get_local_ip()}:8000/turntable.mp3"
 
 # Speaker discovery cache to prevent repeated slow network scans
 _speaker_cache = {'speakers': None, 'timestamp': 0}
-_cache_duration = 5  # seconds
+_speaker_info_cache = {}  # Cache per-speaker info
+_cache_duration = 15  # seconds (increased to reduce network load)
 
 def discover_speakers_with_timeout(timeout=5):
     """
@@ -110,11 +111,23 @@ def discover_speakers_with_timeout(timeout=5):
     finally:
         executor.shutdown(wait=False)
 
-def get_speaker_info_with_timeout(speaker, timeout=3):
+def get_speaker_info_with_timeout(speaker, timeout=8):
     """
     Get speaker info with timeout to prevent hanging on individual speaker queries.
+    Uses per-speaker caching to reduce network load.
     Returns dict with speaker info or minimal info on timeout/error.
     """
+    global _speaker_info_cache
+    
+    # Check cache first
+    cache_key = speaker.player_name
+    now = time.time()
+    if cache_key in _speaker_info_cache:
+        cached_data, cached_time = _speaker_info_cache[cache_key]
+        if (now - cached_time) < _cache_duration:
+            logger.debug(f"Using cached info for {speaker.player_name}")
+            return cached_data
+    
     def _get_info():
         is_playing = False
         is_coordinator = False
@@ -122,31 +135,38 @@ def get_speaker_info_with_timeout(speaker, timeout=3):
         model = 'Sonos'
         
         try:
-            # Get basic info
+            # Get basic info (combine to reduce calls)
             transport_info = speaker.get_current_transport_info()
-            track_info = speaker.get_current_track_info()
+            current_state = transport_info.get('current_transport_state', 'STOPPED')
             
-            # Check group membership
-            coordinator = speaker.group.coordinator
-            if coordinator == speaker:
-                is_coordinator = True
-            else:
-                coordinator_name = coordinator.player_name
-            
-            # Check if playing turntable stream
-            if transport_info.get('current_transport_state') == 'PLAYING':
+            # Only get track info if playing (saves a network call for idle speakers)
+            current_uri = ''
+            if current_state == 'PLAYING':
+                track_info = speaker.get_current_track_info()
                 current_uri = track_info.get('uri', '')
                 if 'turntable.mp3' in current_uri or ':8000' in current_uri:
                     is_playing = True
             
-            # Check if grouped with coordinator playing turntable
-            if not is_playing and coordinator and coordinator != speaker:
-                coord_transport = coordinator.get_current_transport_info()
-                coord_track = coordinator.get_current_track_info()
-                if coord_transport.get('current_transport_state') == 'PLAYING':
-                    coord_uri = coord_track.get('uri', '')
-                    if 'turntable.mp3' in coord_uri or ':8000' in coord_uri:
-                        is_playing = True
+            # Check group membership
+            try:
+                coordinator = speaker.group.coordinator
+                if coordinator == speaker:
+                    is_coordinator = True
+                else:
+                    coordinator_name = coordinator.player_name
+                    
+                    # Check if grouped with coordinator playing turntable
+                    if not is_playing and current_state == 'PLAYING':
+                        # If this speaker is playing but not turntable, check coordinator
+                        try:
+                            coord_track = coordinator.get_current_track_info()
+                            coord_uri = coord_track.get('uri', '')
+                            if 'turntable.mp3' in coord_uri or ':8000' in coord_uri:
+                                is_playing = True
+                        except:
+                            pass
+            except:
+                is_coordinator = True  # Assume coordinator if we can't determine
             
             # Get model (cache-friendly, rarely changes)
             try:
@@ -157,7 +177,7 @@ def get_speaker_info_with_timeout(speaker, timeout=3):
         except Exception as e:
             logger.debug(f"Error getting speaker state for {speaker.player_name}: {e}")
         
-        return {
+        result = {
             'name': speaker.player_name,
             'model': model,
             'ip': speaker.ip_address,
@@ -165,6 +185,11 @@ def get_speaker_info_with_timeout(speaker, timeout=3):
             'is_coordinator': is_coordinator,
             'coordinator_name': coordinator_name
         }
+        
+        # Cache the result
+        _speaker_info_cache[cache_key] = (result, time.time())
+        
+        return result
     
     executor = ThreadPoolExecutor(max_workers=1)
     future = executor.submit(_get_info)
@@ -172,7 +197,12 @@ def get_speaker_info_with_timeout(speaker, timeout=3):
     try:
         return future.result(timeout=timeout)
     except FuturesTimeoutError:
-        logger.warning(f"Timeout getting info for {speaker.player_name}")
+        logger.warning(f"Timeout getting info for {speaker.player_name} after {timeout}s")
+        # Return cached data if available
+        if cache_key in _speaker_info_cache:
+            cached_data, _ = _speaker_info_cache[cache_key]
+            logger.info(f"Returning stale cache for {speaker.player_name}")
+            return cached_data
         return {
             'name': speaker.player_name,
             'model': 'Sonos',
@@ -183,6 +213,9 @@ def get_speaker_info_with_timeout(speaker, timeout=3):
         }
     except Exception as e:
         logger.warning(f"Error getting info for {speaker.player_name}: {e}")
+        if cache_key in _speaker_info_cache:
+            cached_data, _ = _speaker_info_cache[cache_key]
+            return cached_data
         return {
             'name': speaker.player_name,
             'model': 'Sonos',
@@ -454,8 +487,8 @@ class WebHandler(BaseHTTPRequestHandler):
         // Load speakers immediately
         loadSpeakers();
         
-        // Refresh speaker status every 5 seconds
-        setInterval(loadSpeakers, 5000);
+        // Refresh speaker status every 20 seconds (matches server cache)
+        setInterval(loadSpeakers, 20000);
     </script>
 </body>
 </html>
@@ -472,14 +505,14 @@ class WebHandler(BaseHTTPRequestHandler):
                 
                 speakers = discover_speakers_with_timeout(timeout=5)
                 
-                # Query all speakers in parallel for speed
+                # Query all speakers in parallel for speed (with caching)
                 speaker_list = []
                 if speakers:
                     with ThreadPoolExecutor(max_workers=min(len(speakers), 10)) as executor:
-                        futures = [executor.submit(get_speaker_info_with_timeout, s, 3) for s in speakers]
+                        futures = [executor.submit(get_speaker_info_with_timeout, s, 8) for s in speakers]
                         for future in futures:
                             try:
-                                speaker_info = future.result(timeout=5)  # Overall timeout
+                                speaker_info = future.result(timeout=10)  # Overall timeout per speaker
                                 speaker_list.append(speaker_info)
                             except Exception as e:
                                 logger.warning(f"Failed to get speaker info: {e}")
