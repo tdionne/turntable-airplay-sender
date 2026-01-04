@@ -79,13 +79,14 @@ class WebHandler(BaseHTTPRequestHandler):
             self.restart_service()
         elif self.path == '/':
             self.send_response(200)
-            self.send_header('Content-type', 'text/html')
+            self.send_header('Content-type', 'text/html; charset=utf-8')
             self.end_headers()
             
             html = f"""
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <title>Turntable Control</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
@@ -422,13 +423,14 @@ class WebHandler(BaseHTTPRequestHandler):
     def send_settings_page(self):
         """Send the settings page HTML."""
         self.send_response(200)
-        self.send_header('Content-type', 'text/html')
+        self.send_header('Content-type', 'text/html; charset=utf-8')
         self.end_headers()
         
         html = """
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <title>Turntable Settings</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
