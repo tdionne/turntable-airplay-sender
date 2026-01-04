@@ -366,9 +366,50 @@ class WebHandler(BaseHTTPRequestHandler):
             color: #666;
             margin: 20px 0;
         }}
+        .loading-overlay {{
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }}
+        .loading-overlay.active {{
+            display: flex;
+        }}
+        .spinner {{
+            width: 60px;
+            height: 60px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #1DB954;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }}
+        @keyframes spin {{
+            0% {{ transform: rotate(0deg); }}
+            100% {{ transform: rotate(360deg); }}
+        }}
+        .loading-text {{
+            color: white;
+            margin-top: 20px;
+            font-size: 18px;
+            font-weight: bold;
+        }}
     </style>
 </head>
 <body>
+    <!-- Loading overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div style="text-align: center;">
+            <div class="spinner"></div>
+            <div class="loading-text" id="loadingText">Processing...</div>
+        </div>
+    </div>
+    
     <div class="emoji">🎵</div>
     <h1>Turntable Control</h1>
     
@@ -450,7 +491,14 @@ class WebHandler(BaseHTTPRequestHandler):
         }}
         
         async function play(speakerName) {{
+            const overlay = document.getElementById('loadingOverlay');
+            const loadingText = document.getElementById('loadingText');
+            
             try {{
+                // Show loading overlay
+                loadingText.textContent = `Starting playback on ${{speakerName}}...`;
+                overlay.classList.add('active');
+                
                 const response = await fetch('/api/play', {{
                     method: 'POST',
                     headers: {{'Content-Type': 'application/json'}},
@@ -458,20 +506,34 @@ class WebHandler(BaseHTTPRequestHandler):
                 }});
                 
                 const result = await response.json();
+                
+                // Update loading text while refreshing
+                loadingText.textContent = 'Updating status...';
+                
                 if (result.success) {{
-                    alert('✅ Playing on ' + speakerName + '!\\n\\nPut a record on the turntable.');
                     // Refresh speaker list to show new status
-                    loadSpeakers();
+                    await loadSpeakers();
+                    overlay.classList.remove('active');
+                    alert('✅ Playing on ' + speakerName + '!\\n\\nPut a record on the turntable.');
                 }} else {{
+                    overlay.classList.remove('active');
                     alert('❌ Error: ' + result.error);
                 }}
             }} catch (e) {{
+                overlay.classList.remove('active');
                 alert('❌ Error starting playback');
             }}
         }}
         
         async function stop(speakerName) {{
+            const overlay = document.getElementById('loadingOverlay');
+            const loadingText = document.getElementById('loadingText');
+            
             try {{
+                // Show loading overlay
+                loadingText.textContent = `Stopping ${{speakerName}}...`;
+                overlay.classList.add('active');
+                
                 const response = await fetch('/api/stop', {{
                     method: 'POST',
                     headers: {{'Content-Type': 'application/json'}},
@@ -479,13 +541,20 @@ class WebHandler(BaseHTTPRequestHandler):
                 }});
                 
                 const result = await response.json();
+                
+                // Update loading text while refreshing
+                loadingText.textContent = 'Updating status...';
+                
                 if (result.success) {{
                     // Refresh speaker list to show new status
-                    loadSpeakers();
+                    await loadSpeakers();
+                    overlay.classList.remove('active');
                 }} else {{
+                    overlay.classList.remove('active');
                     alert('❌ Error: ' + result.error);
                 }}
             }} catch (e) {{
+                overlay.classList.remove('active');
                 alert('❌ Error stopping playback');
             }}
         }}
