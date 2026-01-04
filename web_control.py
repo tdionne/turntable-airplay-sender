@@ -8,9 +8,49 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import soco
 import socket
 import logging
+import json
+import yaml
+from pathlib import Path
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Config file paths to check (in order)
+CONFIG_PATHS = [
+    Path('/opt/turntable-streaming/config.yaml'),
+    Path('config.yaml'),
+]
+
+def get_config_path():
+    """Find the config file."""
+    for path in CONFIG_PATHS:
+        if path.exists():
+            return path
+    return CONFIG_PATHS[0]  # Default to first path
+
+def load_config():
+    """Load configuration from YAML file."""
+    config_path = get_config_path()
+    try:
+        if config_path.exists():
+            with open(config_path, 'r') as f:
+                return yaml.safe_load(f)
+        return {}
+    except Exception as e:
+        logger.error(f"Error loading config: {e}")
+        return {}
+
+def save_config(config):
+    """Save configuration to YAML file."""
+    config_path = get_config_path()
+    try:
+        with open(config_path, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+        logger.info(f"Config saved to {config_path}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving config: {e}")
+        return False
 
 def get_local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -29,7 +69,11 @@ class WebHandler(BaseHTTPRequestHandler):
         logger.info(f"{self.client_address[0]} - {format % args}")
     
     def do_GET(self):
-        if self.path == '/':
+        if self.path == '/settings':
+            self.send_settings_page()
+        elif self.path == '/api/config':
+            self.send_config()
+        elif self.path == '/':
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
             self.end_headers()
@@ -104,6 +148,9 @@ class WebHandler(BaseHTTPRequestHandler):
     <div class="info">
         <strong>Stream URL:</strong><br>
         <a href="{STREAM_URL}" target="_blank">{STREAM_URL}</a>
+        <div style="margin-top: 10px;">
+            <a href="/settings" style="color: #1DB954; text-decoration: none; font-weight: bold;">⚙️ Settings</a>
+        </div>
     </div>
     
     <div id="speakers">
@@ -192,7 +239,6 @@ class WebHandler(BaseHTTPRequestHandler):
                     except Exception as e:
                         logger.warning(f"API: Error getting speaker info: {e}")
                 
-                import json
                 response = json.dumps(speaker_list)
                 self.wfile.write(response.encode())
                 logger.info(f"API: Returned {len(speaker_list)} speaker(s) to client")
@@ -206,13 +252,14 @@ class WebHandler(BaseHTTPRequestHandler):
     
     def do_POST(self):
         """Handle POST requests."""
-        if self.path == '/api/play':
+        if self.path == '/api/config':
+            self.save_config_handler()
+        elif self.path == '/api/play':
             logger.info("API: Received play request")
             try:
                 content_length = int(self.headers['Content-Length'])
                 post_data = self.rfile.read(content_length)
                 
-                import json
                 data = json.loads(post_data.decode())
                 speaker_name = data.get('speaker')
                 logger.info(f"API: Request to play on speaker: {speaker_name}")
@@ -259,6 +306,317 @@ class WebHandler(BaseHTTPRequestHandler):
         else:
             self.send_response(404)
             self.end_headers()
+    
+    def send_config(self):
+        """Send current configuration as JSON."""
+        try:
+            config = load_config()
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(config).encode())
+            logger.info("API: Sent current config")
+        except Exception as e:
+            logger.error(f"Error sending config: {e}")
+            self.send_response(500)
+            self.end_headers()
+    
+    def save_config_handler(self):
+        """Save configuration from POST request."""
+        try:
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            new_config = json.loads(post_data.decode())
+            
+            logger.info(f"API: Saving config changes")
+            success = save_config(new_config)
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            
+            response = {
+                'success': success,
+                'message': 'Config saved. Restart stream_server_v2.py to apply changes.' if success else 'Failed to save config'
+            }
+            self.wfile.write(json.dumps(response).encode())
+            
+            if success:
+                logger.info("API: ✅ Config saved successfully")
+            else:
+                logger.error("API: ❌ Failed to save config")
+                
+        except Exception as e:
+            logger.error(f"Error saving config: {e}", exc_info=True)
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'success': False, 'error': str(e)}).encode())
+    
+    def send_settings_page(self):
+        """Send the settings page HTML."""
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html')
+        self.end_headers()
+        
+        html = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Turntable Settings</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            max-width: 700px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .section h2 {
+            margin-top: 0;
+            color: #1DB954;
+            font-size: 1.2em;
+        }
+        .field {
+            margin: 15px 0;
+        }
+        .field label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        .field small {
+            display: block;
+            color: #666;
+            margin-top: 3px;
+        }
+        input[type="text"], input[type="number"], select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+        .checkbox-field {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .checkbox-field input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+        }
+        button {
+            background: #1DB954;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: bold;
+            width: 100%;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #1ed760;
+        }
+        button:active {
+            background: #1aa34a;
+        }
+        .back-link {
+            display: block;
+            text-align: center;
+            margin: 20px 0;
+            color: #1DB954;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .alert {
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+            display: none;
+        }
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .loading {
+            text-align: center;
+            color: #666;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>⚙️ Settings</h1>
+    
+    <div id="loading" class="loading">Loading settings...</div>
+    <div id="alert" class="alert"></div>
+    
+    <form id="settingsForm" style="display:none;">
+        <div class="section">
+            <h2>🎵 Auto-Play Detection</h2>
+            
+            <div class="field checkbox-field">
+                <input type="checkbox" id="autoplay_enabled" name="auto_play.enabled">
+                <label for="autoplay_enabled">Enable Auto-Play (power-on + needle-drop detection)</label>
+            </div>
+            
+            <div class="field">
+                <label for="default_speaker">Default Speaker</label>
+                <input type="text" id="default_speaker" name="auto_play.default_speaker" placeholder="Living Room">
+                <small>Which Sonos speaker to auto-start</small>
+            </div>
+            
+            <div class="field">
+                <label for="power_on_threshold">Power-On Threshold</label>
+                <input type="number" id="power_on_threshold" name="auto_play.power_on_threshold" min="1000" max="30000" step="1000">
+                <small>RMS level for turntable power-on spike (15000-25000 typical)</small>
+            </div>
+            
+            <div class="field">
+                <label for="audio_threshold">Needle-Drop Threshold</label>
+                <input type="number" id="audio_threshold" name="auto_play.audio_threshold" min="100" max="2000" step="50">
+                <small>RMS level for normal music (300-1000 recommended)</small>
+            </div>
+            
+            <div class="field">
+                <label for="trigger_delay">Trigger Delay (seconds)</label>
+                <input type="number" id="trigger_delay" name="auto_play.trigger_delay" min="1" max="10" step="0.5">
+                <small>How long audio must sustain before triggering</small>
+            </div>
+            
+            <div class="field">
+                <label for="power_on_cooldown">Power-On Cooldown (seconds)</label>
+                <input type="number" id="power_on_cooldown" name="auto_play.power_on_cooldown" min="10" max="60" step="5">
+                <small>Time to drop needle after power-on (prevents re-trigger)</small>
+            </div>
+            
+            <div class="field">
+                <label for="reset_disconnect">Reset After Disconnect (seconds)</label>
+                <input type="number" id="reset_disconnect" name="auto_play.reset_on_disconnect_delay" min="5" max="30" step="5">
+                <small>Reset trigger when no clients for this long (switched to TV)</small>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>🔊 Audio Processing</h2>
+            
+            <div class="field">
+                <label for="volume_gain">Volume Gain</label>
+                <input type="number" id="volume_gain" name="audio_processing.volume_gain" min="0.5" max="5" step="0.5">
+                <small>Volume boost multiplier (1.0 = normal, 2.0 = double, 3.0 = triple)</small>
+            </div>
+        </div>
+        
+        <button type="submit">💾 Save Settings</button>
+        <a href="/" class="back-link">← Back to Control</a>
+    </form>
+    
+    <script>
+        async function loadSettings() {
+            try {
+                const response = await fetch('/api/config');
+                const config = await response.json();
+                
+                // Populate form fields
+                document.getElementById('autoplay_enabled').checked = config.auto_play?.enabled || false;
+                document.getElementById('default_speaker').value = config.auto_play?.default_speaker || 'Living Room';
+                document.getElementById('power_on_threshold').value = config.auto_play?.power_on_threshold || 15000;
+                document.getElementById('audio_threshold').value = config.auto_play?.audio_threshold || 500;
+                document.getElementById('trigger_delay').value = config.auto_play?.trigger_delay || 2.0;
+                document.getElementById('power_on_cooldown').value = config.auto_play?.power_on_cooldown || 30;
+                document.getElementById('reset_disconnect').value = config.auto_play?.reset_on_disconnect_delay || 10;
+                document.getElementById('volume_gain').value = config.audio_processing?.volume_gain || 2.0;
+                
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('settingsForm').style.display = 'block';
+            } catch (e) {
+                document.getElementById('loading').textContent = 'Error loading settings';
+            }
+        }
+        
+        document.getElementById('settingsForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            // Build config object from form
+            const config = {
+                auto_play: {
+                    enabled: document.getElementById('autoplay_enabled').checked,
+                    default_speaker: document.getElementById('default_speaker').value,
+                    power_on_threshold: parseInt(document.getElementById('power_on_threshold').value),
+                    audio_threshold: parseInt(document.getElementById('audio_threshold').value),
+                    trigger_delay: parseFloat(document.getElementById('trigger_delay').value),
+                    power_on_cooldown: parseInt(document.getElementById('power_on_cooldown').value),
+                    reset_on_disconnect_delay: parseInt(document.getElementById('reset_disconnect').value)
+                },
+                audio_processing: {
+                    volume_gain: parseFloat(document.getElementById('volume_gain').value)
+                }
+            };
+            
+            try {
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(config)
+                });
+                
+                const result = await response.json();
+                const alert = document.getElementById('alert');
+                
+                if (result.success) {
+                    alert.className = 'alert alert-success';
+                    alert.textContent = '✅ Settings saved! Restart the streaming server to apply changes.';
+                } else {
+                    alert.className = 'alert alert-error';
+                    alert.textContent = '❌ Error: ' + result.message;
+                }
+                
+                alert.style.display = 'block';
+                window.scrollTo(0, 0);
+                
+                // Hide alert after 5 seconds
+                setTimeout(() => {
+                    alert.style.display = 'none';
+                }, 5000);
+            } catch (e) {
+                const alert = document.getElementById('alert');
+                alert.className = 'alert alert-error';
+                alert.textContent = '❌ Error saving settings';
+                alert.style.display = 'block';
+            }
+        });
+        
+        loadSettings();
+    </script>
+</body>
+</html>
+        """
+        
+        self.wfile.write(html.encode())
 
 def main():
     PORT = 8080
