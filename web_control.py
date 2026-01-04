@@ -458,6 +458,7 @@ class WebHandler(BaseHTTPRequestHandler):
                 sortedSpeakers.push(...orphans);
                 
                 sortedSpeakers.forEach(speaker => {{
+                    console.log('[LoadSpeakers] Rendering speaker:', speaker.name, 'playing:', speaker.playing);
                     const div = document.createElement('div');
                     let className = speaker.playing ? 'speaker playing' : 'speaker';
                     if (!speaker.is_coordinator && speaker.coordinator_name) {{
@@ -469,6 +470,8 @@ class WebHandler(BaseHTTPRequestHandler):
                     const buttonText = speaker.playing ? 'Stop' : 'Play';
                     const buttonClass = speaker.playing ? 'stop-btn' : '';
                     const buttonId = `btn-${{speaker.name.replace(/\s+/g, '-')}}`;
+                    
+                    console.log('[LoadSpeakers]   Button:', buttonText, 'Action:', buttonAction, 'ID:', buttonId);
                     
                     const coordinatorBadge = speaker.is_coordinator && speaker.playing 
                         ? '<span class="coordinator-badge">GROUP</span>' 
@@ -528,9 +531,11 @@ class WebHandler(BaseHTTPRequestHandler):
                     await new Promise(resolve => setTimeout(resolve, 6000));
                     
                     // Force refresh speaker list (bypass cache)
+                    // Note: This rebuilds the entire speaker list with new buttons
                     console.log('[Play] Force refreshing speaker list...');
                     await loadSpeakers(true);
-                    console.log('[Play] Complete!');
+                    console.log('[Play] Complete! Speaker list rebuilt with updated state.');
+                    // Don't touch button after this - it's been replaced by loadSpeakers()
                 }} else {{
                     button.disabled = false;
                     button.textContent = originalText;
