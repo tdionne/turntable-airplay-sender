@@ -230,7 +230,7 @@ class StreamHandler(BaseHTTPRequestHandler):
                 # Only count real connections (>5s), ignore health checks
                 # Also ignore disconnects during power-on cooldown (user hasn't dropped needle yet)
                 if len(clients) == 0:
-                    global auto_play_cooldown_until
+                    global auto_play_cooldown_until, auto_play_triggered
                     
                     # Check if we're in power-on cooldown
                     in_cooldown = (auto_play_cooldown_until is not None and 
@@ -239,8 +239,10 @@ class StreamHandler(BaseHTTPRequestHandler):
                     if connection_duration > 5.0:
                         if in_cooldown:
                             # Disconnect during power-on cooldown - Sonos timed out waiting for audio
-                            # Don't start reset timer, give user time to drop needle
-                            logger.info("All clients disconnected during power-on cooldown (no needle yet), ignoring for reset")
+                            # Clear trigger so needle-drop can re-trigger when user drops needle
+                            logger.info("All clients disconnected during power-on cooldown (no needle yet)")
+                            logger.info("Clearing trigger - needle-drop will re-trigger when dropped")
+                            auto_play_triggered = False
                         else:
                             # Real playback ended (after cooldown)
                             last_client_disconnect_time = time.time()
@@ -420,10 +422,14 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
                                 last_client_disconnect_time = None
                     
                     # Check if we're in cooldown period (after power-on spike)
+                    # Only enforce cooldown if still triggered (prevents re-trigger from power-on noise)
+                    # If trigger was cleared (Sonos disconnected), allow needle-drop detection
                     if auto_play_cooldown_until is not None:
                         if current_time < auto_play_cooldown_until:
-                            # Still in cooldown, ignore audio
-                            continue
+                            if auto_play_triggered:
+                                # Still triggered and in cooldown, ignore audio (prevents re-trigger)
+                                continue
+                            # else: Trigger was cleared, allow needle-drop detection to proceed
                         else:
                             # Cooldown expired
                             auto_play_cooldown_until = None
