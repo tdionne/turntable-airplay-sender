@@ -525,6 +525,9 @@ class WebHandler(BaseHTTPRequestHandler):
                 console.log('[Play] API result:', result);
                 
                 if (result.success) {{
+                    // Pause automatic refresh to avoid showing stale data during wait
+                    pauseAutoRefresh();
+                    
                     // Wait longer for Play (TRANSITIONING → PLAYING takes time)
                     button.innerHTML = '<span class="btn-spinner"></span>Connecting...';
                     console.log('[Play] Waiting 6 seconds for TRANSITIONING→PLAYING...');
@@ -535,6 +538,9 @@ class WebHandler(BaseHTTPRequestHandler):
                     console.log('[Play] Force refreshing speaker list...');
                     await loadSpeakers(true);
                     console.log('[Play] Complete! Speaker list rebuilt with updated state.');
+                    
+                    // Restart automatic refresh
+                    startAutoRefresh();
                     // Don't touch button after this - it's been replaced by loadSpeakers()
                 }} else {{
                     button.disabled = false;
@@ -571,11 +577,17 @@ class WebHandler(BaseHTTPRequestHandler):
                 const result = await response.json();
                 
                 if (result.success) {{
+                    // Pause automatic refresh to avoid showing stale data during wait
+                    pauseAutoRefresh();
+                    
                     // Wait a moment for Sonos to update its state
                     await new Promise(resolve => setTimeout(resolve, 1500));
                     
                     // Force refresh speaker list (bypass cache)
                     await loadSpeakers(true);
+                    
+                    // Restart automatic refresh
+                    startAutoRefresh();
                 }} else {{
                     button.disabled = false;
                     button.textContent = originalText;
@@ -588,11 +600,30 @@ class WebHandler(BaseHTTPRequestHandler):
             }}
         }}
         
+        // Track the auto-refresh interval so we can pause it during actions
+        let autoRefreshInterval = null;
+        
+        function startAutoRefresh() {{
+            // Clear any existing interval
+            if (autoRefreshInterval) {{
+                clearInterval(autoRefreshInterval);
+            }}
+            // Refresh speaker status every 20 seconds (matches server cache)
+            autoRefreshInterval = setInterval(loadSpeakers, 20000);
+        }}
+        
+        function pauseAutoRefresh() {{
+            if (autoRefreshInterval) {{
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }}
+        }}
+        
         // Load speakers immediately
         loadSpeakers();
         
-        // Refresh speaker status every 20 seconds (matches server cache)
-        setInterval(loadSpeakers, 20000);
+        // Start auto-refresh
+        startAutoRefresh();
     </script>
 </body>
 </html>
