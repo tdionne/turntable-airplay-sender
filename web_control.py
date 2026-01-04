@@ -11,6 +11,7 @@ import logging
 import json
 import yaml
 from pathlib import Path
+import subprocess
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -73,6 +74,8 @@ class WebHandler(BaseHTTPRequestHandler):
             self.send_settings_page()
         elif self.path == '/api/config':
             self.send_config()
+        elif self.path == '/api/restart':
+            self.restart_service()
         elif self.path == '/':
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
@@ -353,6 +356,57 @@ class WebHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({'success': False, 'error': str(e)}).encode())
     
+    def restart_service(self):
+        """Restart the turntable-stream systemd service."""
+        try:
+            logger.info("API: Attempting to restart turntable-stream service")
+            
+            # Try to restart the service
+            result = subprocess.run(
+                ['sudo', 'systemctl', 'restart', 'turntable-stream'],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            
+            if result.returncode == 0:
+                logger.info("API: ✅ Service restarted successfully")
+                response = {
+                    'success': True,
+                    'message': 'Streaming server restarted successfully! Changes applied.'
+                }
+            else:
+                logger.error(f"API: ❌ Service restart failed: {result.stderr}")
+                response = {
+                    'success': False,
+                    'message': f'Restart failed. You may need to configure sudo permissions. Error: {result.stderr}'
+                }
+            
+            self.wfile.write(json.dumps(response).encode())
+            
+        except subprocess.TimeoutExpired:
+            logger.error("API: Service restart timed out")
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                'success': False,
+                'message': 'Restart timed out'
+            }).encode())
+        except Exception as e:
+            logger.error(f"API: Error restarting service: {e}", exc_info=True)
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                'success': False,
+                'message': f'Error: {str(e)}'
+            }).encode())
+    
     def send_settings_page(self):
         """Send the settings page HTML."""
         self.send_response(200)
@@ -437,6 +491,19 @@ class WebHandler(BaseHTTPRequestHandler):
         }
         button:active {
             background: #1aa34a;
+        }
+        button.secondary {
+            background: #666;
+        }
+        button.secondary:hover {
+            background: #777;
+        }
+        button.secondary:active {
+            background: #555;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
         }
         .back-link {
             display: block;
@@ -532,6 +599,7 @@ class WebHandler(BaseHTTPRequestHandler):
         </div>
         
         <button type="submit">💾 Save Settings</button>
+        <button type="button" class="secondary" id="restartBtn" onclick="restartServer()">🔄 Restart Streaming Server</button>
         <a href="/" class="back-link">← Back to Control</a>
     </form>
     
@@ -609,6 +677,46 @@ class WebHandler(BaseHTTPRequestHandler):
                 alert.style.display = 'block';
             }
         });
+        
+        async function restartServer() {
+            if (!confirm('Restart the streaming server? This will briefly interrupt any active playback.')) {
+                return;
+            }
+            
+            const btn = document.getElementById('restartBtn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Restarting...';
+            
+            try {
+                const response = await fetch('/api/restart');
+                const result = await response.json();
+                
+                const alert = document.getElementById('alert');
+                
+                if (result.success) {
+                    alert.className = 'alert alert-success';
+                    alert.textContent = '✅ ' + result.message;
+                } else {
+                    alert.className = 'alert alert-error';
+                    alert.textContent = '❌ ' + result.message;
+                }
+                
+                alert.style.display = 'block';
+                window.scrollTo(0, 0);
+                
+                setTimeout(() => {
+                    alert.style.display = 'none';
+                }, 5000);
+            } catch (e) {
+                const alert = document.getElementById('alert');
+                alert.className = 'alert alert-error';
+                alert.textContent = '❌ Error restarting server';
+                alert.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🔄 Restart Streaming Server';
+            }
+        }
         
         loadSettings();
     </script>
