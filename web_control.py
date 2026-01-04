@@ -77,7 +77,7 @@ def invalidate_speaker_cache():
     """Clear speaker info cache to force fresh queries (called after play/stop)."""
     global _speaker_info_cache
     _speaker_info_cache.clear()
-    logger.debug("Speaker info cache invalidated")
+    logger.info("🗑️  Speaker info cache invalidated (forcing fresh queries)")
 
 def discover_speakers_with_timeout(timeout=5):
     """
@@ -131,9 +131,14 @@ def get_speaker_info_with_timeout(speaker, timeout=8):
     now = time.time()
     if cache_key in _speaker_info_cache:
         cached_data, cached_time = _speaker_info_cache[cache_key]
-        if (now - cached_time) < _cache_duration:
-            logger.debug(f"Using cached info for {speaker.player_name}")
+        cache_age = now - cached_time
+        if cache_age < _cache_duration:
+            logger.info(f"📦 Using cached info for {speaker.player_name} (age: {cache_age:.1f}s)")
             return cached_data
+        else:
+            logger.info(f"🔄 Cache expired for {speaker.player_name} (age: {cache_age:.1f}s), fetching fresh")
+    else:
+        logger.info(f"🆕 No cache for {speaker.player_name}, fetching fresh")
     
     def _get_info():
         is_playing = False
@@ -153,6 +158,9 @@ def get_speaker_info_with_timeout(speaker, timeout=8):
                 current_uri = track_info.get('uri', '')
                 if 'turntable.mp3' in current_uri or ':8000' in current_uri:
                     is_playing = True
+            
+            # Log what we're seeing from Sonos
+            logger.info(f"Speaker {speaker.player_name}: state={current_state}, uri={current_uri[:50] if current_uri else 'none'}, is_playing={is_playing}")
             
             # Check group membership
             try:
@@ -195,6 +203,7 @@ def get_speaker_info_with_timeout(speaker, timeout=8):
         
         # Cache the result
         _speaker_info_cache[cache_key] = (result, time.time())
+        logger.info(f"✅ Fresh data for {speaker.player_name}: playing={is_playing}")
         
         return result
     
@@ -518,7 +527,7 @@ class WebHandler(BaseHTTPRequestHandler):
                 if (result.success) {{
                     // Wait longer for Play (stream needs to start & buffer)
                     loadingText.textContent = 'Waiting for stream to start...';
-                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    await new Promise(resolve => setTimeout(resolve, 4000));
                     
                     // Force refresh speaker list (bypass cache)
                     loadingText.textContent = 'Updating display...';
