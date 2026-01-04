@@ -26,14 +26,17 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Stop and disable service
-echo "Stopping service..."
+# Stop and disable services
+echo "Stopping services..."
 systemctl stop turntable-stream 2>/dev/null || true
 systemctl disable turntable-stream 2>/dev/null || true
+systemctl stop turntable-web 2>/dev/null || true
+systemctl disable turntable-web 2>/dev/null || true
 
-# Remove service file
-echo "Removing systemd service..."
+# Remove service files
+echo "Removing systemd services..."
 rm -f /etc/systemd/system/turntable-stream.service
+rm -f /etc/systemd/system/turntable-web.service
 systemctl daemon-reload
 
 # Remove directories

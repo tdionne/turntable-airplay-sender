@@ -76,8 +76,10 @@ source "$VENV_DIR/bin/activate"
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# Install systemd service
-echo "Installing systemd service..."
+# Install systemd services
+echo "Installing systemd services..."
+
+# Streaming service
 cat > /etc/systemd/system/turntable-stream.service << EOF
 [Unit]
 Description=Turntable Streaming Server
@@ -89,6 +91,26 @@ User=root
 Group=audio
 WorkingDirectory=$INSTALL_DIR
 ExecStart=$VENV_DIR/bin/python3 $INSTALL_DIR/stream_server_v2.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Web control service
+cat > /etc/systemd/system/turntable-web.service << EOF
+[Unit]
+Description=Turntable Web Control Interface
+After=network.target turntable-stream.service
+Wants=turntable-stream.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=$INSTALL_DIR
+ExecStart=$VENV_DIR/bin/python3 $INSTALL_DIR/web_control.py
 Restart=always
 RestartSec=10
 
@@ -114,16 +136,27 @@ echo "  1. Edit config: sudo nano $INSTALL_DIR/config.yaml"
 echo "     - Enable auto-play: set 'enabled: true'"
 echo "     - Set speaker name: 'default_speaker: \"Living Room\"'"
 echo "     - Adjust volume gain if needed"
-echo "  2. Enable service: sudo systemctl enable turntable-stream"
-echo "  3. Start service:  sudo systemctl start turntable-stream"
-echo "  4. Check status:   sudo systemctl status turntable-stream"
+echo ""
+echo "  2. Enable services:"
+echo "     sudo systemctl enable turntable-stream"
+echo "     sudo systemctl enable turntable-web"
+echo ""
+echo "  3. Start services:"
+echo "     sudo systemctl start turntable-stream"
+echo "     sudo systemctl start turntable-web"
+echo ""
+echo "  4. Check status:"
+echo "     sudo systemctl status turntable-stream"
+echo "     sudo systemctl status turntable-web"
+echo
+echo "Web interface will be available at:"
+echo "  http://$(hostname -I | awk '{print $1}'):8080"
 echo
 echo "Test auto-play detection:"
 echo "  Test detection:   $VENV_DIR/bin/python3 $INSTALL_DIR/test_autoplay.py"
 echo
-echo "Quick commands:"
+echo "Manual commands (if needed):"
 echo "  Play on Sonos:    $VENV_DIR/bin/python3 $INSTALL_DIR/play_on_sonos.py 'Speaker Name'"
-echo "  Web interface:    $VENV_DIR/bin/python3 $INSTALL_DIR/web_control.py"
 echo "  Create playlist:  $VENV_DIR/bin/python3 $INSTALL_DIR/create_playlist.py"
 echo
 echo "Documentation:"

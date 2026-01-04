@@ -1,0 +1,17 @@
+[Unit]
+Description=Turntable Web Control Interface
+After=network.target turntable-stream.service
+Wants=turntable-stream.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/turntable-streaming
+ExecStart=/opt/turntable-streaming/venv/bin/python3 /opt/turntable-streaming/web_control.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+
