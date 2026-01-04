@@ -379,50 +379,28 @@ class WebHandler(BaseHTTPRequestHandler):
             color: #666;
             margin: 20px 0;
         }}
-        .loading-overlay {{
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 9999;
-            justify-content: center;
-            align-items: center;
-        }}
-        .loading-overlay.active {{
-            display: flex;
-        }}
-        .spinner {{
-            width: 60px;
-            height: 60px;
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #1DB954;
+        .btn-spinner {{
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top: 2px solid white;
             border-radius: 50%;
-            animation: spin 1s linear infinite;
+            animation: spin 0.8s linear infinite;
+            margin-right: 5px;
+            vertical-align: middle;
         }}
         @keyframes spin {{
             0% {{ transform: rotate(0deg); }}
             100% {{ transform: rotate(360deg); }}
         }}
-        .loading-text {{
-            color: white;
-            margin-top: 20px;
-            font-size: 18px;
-            font-weight: bold;
+        button:disabled {{
+            opacity: 0.7;
+            cursor: not-allowed;
         }}
     </style>
 </head>
 <body>
-    <!-- Loading overlay -->
-    <div id="loadingOverlay" class="loading-overlay">
-        <div style="text-align: center;">
-            <div class="spinner"></div>
-            <div class="loading-text" id="loadingText">Processing...</div>
-        </div>
-    </div>
-    
     <div class="emoji">🎵</div>
     <h1>Turntable Control</h1>
     
@@ -483,6 +461,7 @@ class WebHandler(BaseHTTPRequestHandler):
                     const buttonAction = speaker.playing ? 'stop' : 'play';
                     const buttonText = speaker.playing ? 'Stop' : 'Play';
                     const buttonClass = speaker.playing ? 'stop-btn' : '';
+                    const buttonId = `btn-${{speaker.name.replace(/\s+/g, '-')}}`;
                     
                     const coordinatorBadge = speaker.is_coordinator && speaker.playing 
                         ? '<span class="coordinator-badge">GROUP</span>' 
@@ -497,7 +476,7 @@ class WebHandler(BaseHTTPRequestHandler):
                             <br>
                             <small>${{speaker.model}}</small>
                         </div>
-                        <button class="${{buttonClass}}" onclick="${{buttonAction}}('${{speaker.name}}')">${{buttonText}}</button>
+                        <button id="${{buttonId}}" class="${{buttonClass}}" onclick="${{buttonAction}}('${{speaker.name}}')">${{buttonText}}</button>
                     `;
                     container.appendChild(div);
                 }});
@@ -508,13 +487,17 @@ class WebHandler(BaseHTTPRequestHandler):
         }}
         
         async function play(speakerName) {{
-            const overlay = document.getElementById('loadingOverlay');
-            const loadingText = document.getElementById('loadingText');
+            const buttonId = `btn-${{speakerName.replace(/\s+/g, '-')}}`;
+            const button = document.getElementById(buttonId);
+            
+            if (!button) return;
+            
+            const originalText = button.textContent;
             
             try {{
-                // Show loading overlay
-                loadingText.textContent = `Starting playback on ${{speakerName}}...`;
-                overlay.classList.add('active');
+                // Show loading on button
+                button.disabled = true;
+                button.innerHTML = '<span class="btn-spinner"></span>Starting...';
                 
                 const response = await fetch('/api/play', {{
                     method: 'POST',
@@ -526,32 +509,35 @@ class WebHandler(BaseHTTPRequestHandler):
                 
                 if (result.success) {{
                     // Wait longer for Play (TRANSITIONING → PLAYING takes time)
-                    loadingText.textContent = 'Waiting for stream to start...';
+                    button.innerHTML = '<span class="btn-spinner"></span>Connecting...';
                     await new Promise(resolve => setTimeout(resolve, 6000));
                     
                     // Force refresh speaker list (bypass cache)
-                    loadingText.textContent = 'Updating display...';
                     await loadSpeakers(true);
-                    
-                    overlay.classList.remove('active');
                 }} else {{
-                    overlay.classList.remove('active');
+                    button.disabled = false;
+                    button.textContent = originalText;
                     alert('❌ Error: ' + result.error);
                 }}
             }} catch (e) {{
-                overlay.classList.remove('active');
+                button.disabled = false;
+                button.textContent = originalText;
                 alert('❌ Error starting playback');
             }}
         }}
         
         async function stop(speakerName) {{
-            const overlay = document.getElementById('loadingOverlay');
-            const loadingText = document.getElementById('loadingText');
+            const buttonId = `btn-${{speakerName.replace(/\s+/g, '-')}}`;
+            const button = document.getElementById(buttonId);
+            
+            if (!button) return;
+            
+            const originalText = button.textContent;
             
             try {{
-                // Show loading overlay
-                loadingText.textContent = `Stopping ${{speakerName}}...`;
-                overlay.classList.add('active');
+                // Show loading on button
+                button.disabled = true;
+                button.innerHTML = '<span class="btn-spinner"></span>Stopping...';
                 
                 const response = await fetch('/api/stop', {{
                     method: 'POST',
@@ -563,20 +549,18 @@ class WebHandler(BaseHTTPRequestHandler):
                 
                 if (result.success) {{
                     // Wait a moment for Sonos to update its state
-                    loadingText.textContent = 'Waiting for speaker to update...';
                     await new Promise(resolve => setTimeout(resolve, 1500));
                     
                     // Force refresh speaker list (bypass cache)
-                    loadingText.textContent = 'Updating display...';
                     await loadSpeakers(true);
-                    
-                    overlay.classList.remove('active');
                 }} else {{
-                    overlay.classList.remove('active');
+                    button.disabled = false;
+                    button.textContent = originalText;
                     alert('❌ Error: ' + result.error);
                 }}
             }} catch (e) {{
-                overlay.classList.remove('active');
+                button.disabled = false;
+                button.textContent = originalText;
                 alert('❌ Error stopping playback');
             }}
         }}
