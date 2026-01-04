@@ -510,6 +510,10 @@ class WebHandler(BaseHTTPRequestHandler):
             const originalText = button.textContent;
             
             try {{
+                // Pause automatic refresh BEFORE starting (prevents interference during entire action)
+                pauseAutoRefresh();
+                console.log('[Play] Auto-refresh paused');
+                
                 // Show loading on button
                 button.disabled = true;
                 button.innerHTML = '<span class="btn-spinner"></span>Starting...';
@@ -525,8 +529,6 @@ class WebHandler(BaseHTTPRequestHandler):
                 console.log('[Play] API result:', result);
                 
                 if (result.success) {{
-                    // Pause automatic refresh to avoid showing stale data during wait
-                    pauseAutoRefresh();
                     
                     // Wait longer for Play (TRANSITIONING → PLAYING takes time)
                     button.innerHTML = '<span class="btn-spinner"></span>Connecting...';
@@ -546,12 +548,16 @@ class WebHandler(BaseHTTPRequestHandler):
                     button.disabled = false;
                     button.textContent = originalText;
                     alert('❌ Error: ' + result.error);
+                    // Restart auto-refresh on error
+                    startAutoRefresh();
                 }}
             }} catch (e) {{
                 console.error('[Play] Error:', e);
                 button.disabled = false;
                 button.textContent = originalText;
                 alert('❌ Error starting playback: ' + e.message);
+                // Restart auto-refresh on error
+                startAutoRefresh();
             }}
         }}
         
@@ -564,6 +570,9 @@ class WebHandler(BaseHTTPRequestHandler):
             const originalText = button.textContent;
             
             try {{
+                // Pause automatic refresh BEFORE starting (prevents interference during entire action)
+                pauseAutoRefresh();
+                
                 // Show loading on button
                 button.disabled = true;
                 button.innerHTML = '<span class="btn-spinner"></span>Stopping...';
@@ -577,8 +586,6 @@ class WebHandler(BaseHTTPRequestHandler):
                 const result = await response.json();
                 
                 if (result.success) {{
-                    // Pause automatic refresh to avoid showing stale data during wait
-                    pauseAutoRefresh();
                     
                     // Wait a moment for Sonos to update its state
                     await new Promise(resolve => setTimeout(resolve, 1500));
@@ -592,11 +599,15 @@ class WebHandler(BaseHTTPRequestHandler):
                     button.disabled = false;
                     button.textContent = originalText;
                     alert('❌ Error: ' + result.error);
+                    // Restart auto-refresh on error
+                    startAutoRefresh();
                 }}
             }} catch (e) {{
                 button.disabled = false;
                 button.textContent = originalText;
                 alert('❌ Error stopping playback');
+                // Restart auto-refresh on error
+                startAutoRefresh();
             }}
         }}
         
