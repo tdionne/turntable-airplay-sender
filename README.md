@@ -1,10 +1,73 @@
 # Turntable AirPlay Sender
 
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-Compatible-red.svg)](https://www.raspberrypi.org/)
+[![Sonos](https://img.shields.io/badge/Sonos-Multi--Room-green.svg)](https://www.sonos.com/)
+
 **Transform your vinyl collection into a wireless, multi-room listening experience!**
 
 Stream audio from any USB turntable to Sonos speakers using a Raspberry Pi. No subscriptions, no cloud services—just pure analog warmth delivered to your modern wireless speakers.
 
 Perfect for audiophiles and families who want to enjoy vinyl records throughout their home without complicated setups.
+
+---
+
+## 🚀 Quick Start
+
+```bash
+# On your Raspberry Pi
+git clone https://github.com/tdionne/turntable-airplay-sender.git
+cd turntable-airplay-sender
+sudo ./install.sh
+```
+
+That's it! The streaming server auto-starts on boot. Access the web UI at `http://YOUR_PI_IP:8080`
+
+---
+
+## 📋 Table of Contents
+
+- [Why This Project?](#-why-this-project)
+- [Quick Start](#-quick-start)
+- [Features](#features)
+- [Demo](#demo)
+- [Hardware Requirements](#hardware-requirements)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [Use Cases](#-use-cases)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+## Demo
+
+> 🎥 **Coming soon:** Screenshots of the web interface and setup process
+
+In the meantime, here's what you get:
+- **Web Control Panel** - Gorgeous, responsive UI to control all your Sonos speakers
+- **Live Status Indicators** - See which speakers are playing in real-time
+- **Smart Grouping** - Automatically detects and displays grouped speakers
+- **Auto-Play Detection** - Just drop the needle and music starts automatically
+- **Settings Dashboard** - Configure everything from your browser
+
+---
+
+## ✨ Why This Project?
+
+Ever wanted to play your vinyl collection through your Sonos speakers without buying expensive dedicated hardware? This project turns a $35 Raspberry Pi into a powerful bridge between your turntable and modern wireless speakers.
+
+**What makes it special:**
+- ⚡ **Auto-play detection** - Power on your turntable, drop the needle, music starts automatically
+- 🎛️ **Web interface** - Control everything from your phone or computer
+- 👨‍👩‍👧‍👦 **Family-friendly** - Non-technical users can operate it easily
+- 🔓 **No subscriptions** - No TuneIn, Spotify, or cloud services required
+- 🛠️ **Fully customizable** - Adjust gain, thresholds, and behavior to your needs
+
+---
 
 ## Features
 
@@ -19,17 +82,26 @@ Perfect for audiophiles and families who want to enjoy vinyl records throughout 
 
 ## Hardware Requirements
 
-- Raspberry Pi (3B+ or newer recommended)
-- USB turntable (any USB audio device)
-- Sonos speakers with AirPlay 2 support
-- Network connection
+**What you need:**
+- **Raspberry Pi** (3B+, 4, or 5 recommended) - Acts as the streaming bridge
+- **USB turntable** - Any turntable with USB output (Audio-Technica, Denon, Sony, etc.)
+  - Also works with traditional turntables using a USB audio interface
+- **Sonos speakers** - One or more Sonos speakers (Play:1, Play:5, Beam, Arc, etc.)
+  - Must support AirPlay 2 (most modern Sonos devices do)
+- **Home network** - Wi-Fi or Ethernet connection for both Pi and Sonos
+
+**Tested configurations:**
+- ✅ Raspberry Pi 3B+ with Audio-Technica AT-LP120XUSB
+- ✅ Raspberry Pi 4 with various USB turntables
+- ✅ Works with Sonos One, Play:5, Beam, and grouped speakers
 
 ## Software Requirements
 
 - Raspberry Pi OS (Bullseye or newer)
 - Python 3.9+
-- ALSA/PulseAudio
-- Required Python packages (see requirements.txt)
+- ALSA for audio capture
+- FFmpeg for encoding
+- Dependencies auto-installed via `install.sh`
 
 ## Installation
 
@@ -219,13 +291,37 @@ This project is licensed under the GNU General Public License v3.0 (GPL-3.0).
 
 This ensures improvements benefit everyone! See the [LICENSE](LICENSE) file for full details.
 
+## 💼 Use Cases
+
+**Perfect for:**
+- 🏠 **Home vinyl listening** - Play records in any room with Sonos
+- 🎉 **Parties** - Stream to multiple speakers simultaneously
+- 👴 **Seniors** - Simple auto-play makes it easy for non-technical users
+- 🎧 **Audiophiles** - High-quality 320kbps streaming preserves vinyl warmth
+- 🎁 **DIY Gift** - Build one for vinyl-loving friends/family
+- 📻 **Podcasters** - Stream any audio source to Sonos
+- 🎵 **Music production** - Monitor audio from DAW through Sonos
+
+---
+
 ## Contributing
 
-Contributions are welcome! Please feel free to:
-- 🐛 Report bugs via GitHub Issues
-- 💡 Suggest features or improvements
-- 🔧 Submit pull requests
-- ⭐ Star this repo if you find it useful!
+**We'd love your help!** Here's how you can contribute:
+
+- 🐛 **Found a bug?** [Open an issue](https://github.com/tdionne/turntable-airplay-sender/issues/new) with details
+- 💡 **Have an idea?** Share your feature request or improvement suggestion
+- 🔧 **Want to code?** Fork the repo and submit a pull request
+- 📖 **Improve docs?** Documentation improvements are always welcome
+- ⭐ **Spread the word** - Star this repo and share with vinyl enthusiasts!
+
+**Development areas that need help:**
+- Support for other speaker systems (Bose, HomePod, Chromecast)
+- Mobile app for iOS/Android
+- Advanced EQ and audio processing
+- Better visualization/VU meters
+- Automated testing
+
+Join the discussion in [Issues](https://github.com/tdionne/turntable-airplay-sender/issues) or start a [Discussion](https://github.com/tdionne/turntable-airplay-sender/discussions)!
 
 ## Credits
 
