@@ -1,6 +1,10 @@
 # Turntable AirPlay Sender
 
-Stream audio from your USB turntable to Sonos speakers via AirPlay 2 on Raspberry Pi.
+**Transform your vinyl collection into a wireless, multi-room listening experience!**
+
+Stream audio from any USB turntable to Sonos speakers using a Raspberry Pi. No subscriptions, no cloud services—just pure analog warmth delivered to your modern wireless speakers.
+
+Perfect for audiophiles and families who want to enjoy vinyl records throughout their home without complicated setups.
 
 ## Features
 
@@ -203,12 +207,31 @@ turntable-airplay-sender/
 
 ## License
 
-MIT License - See LICENSE file for details
+This project is licensed under the GNU General Public License v3.0 (GPL-3.0).
+
+**What this means:**
+- ✅ You can use, modify, and distribute this software freely
+- ✅ You can use it for commercial purposes
+- ⚠️ **If you distribute modified versions, you must:**
+  - Share your source code under GPL-3.0
+  - Keep the same license
+  - Document your changes
+
+This ensures improvements benefit everyone! See the [LICENSE](LICENSE) file for full details.
+
+## Contributing
+
+Contributions are welcome! Please feel free to:
+- 🐛 Report bugs via GitHub Issues
+- 💡 Suggest features or improvements
+- 🔧 Submit pull requests
+- ⭐ Star this repo if you find it useful!
 
 ## Credits
 
 Built using:
-- PyAudio for audio capture
-- pyatv/airplay2 for AirPlay streaming
-- zeroconf for device discovery
+- [SoCo](https://github.com/SoCo/SoCo) - Python library for Sonos control (MIT)
+- [FFmpeg](https://ffmpeg.org/) - Audio encoding (LGPL/GPL)
+- [Flask](https://flask.palletsprojects.com/) - Web framework (BSD)
+- [pyalsaaudio](https://larsimmisch.github.io/pyalsaaudio/) - ALSA audio capture (PSF)
 
