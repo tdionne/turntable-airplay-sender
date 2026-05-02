@@ -88,10 +88,9 @@ audio_processing:
   # Enable volume normalization
   normalize: false
   
-  # Volume trim applied before loudnorm (1.0 = no change, 0.5 = quieter, 2.0 = louder)
-  # loudnorm handles overall level automatically, so 1.0 is recommended.
-  # Only increase this if your turntable signal is very weak.
-  volume_gain: 1.0
+  # Volume gain (1.0 = no change, 2.0 = double, 0-3.0 recommended)
+  # Keep below 1.1 if your turntable signal peaks near 0dBFS to avoid clipping.
+  volume_gain: 0.9
   
   # Enable noise gate (reduces background noise)
   noise_gate: false
