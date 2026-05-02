@@ -78,6 +78,7 @@ pip install -r requirements.txt
 
 # Install systemd services
 echo "Installing systemd services..."
+REPO_DIR="$(pwd)"
 
 # Streaming service
 cat > /etc/systemd/system/turntable-stream.service << EOF
@@ -119,8 +120,8 @@ WantedBy=multi-user.target
 EOF
 
 # Nightly restart timer (prevents FFmpeg degradation over long uptimes)
-cp turntable-stream-restart.service /etc/systemd/system/
-cp turntable-stream-restart.timer /etc/systemd/system/
+cp "$REPO_DIR/turntable-stream-restart.service" /etc/systemd/system/
+cp "$REPO_DIR/turntable-stream-restart.timer" /etc/systemd/system/
 
 # Reload systemd
 systemctl daemon-reload
