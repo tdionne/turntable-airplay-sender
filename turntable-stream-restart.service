@@ -1,0 +1,6 @@
+[Unit]
+Description=Nightly restart of Turntable Streaming Server
+
+[Service]
+Type=oneshot
+ExecStart=/bin/systemctl restart turntable-stream

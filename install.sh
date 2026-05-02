@@ -118,8 +118,14 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
+# Nightly restart timer (prevents FFmpeg degradation over long uptimes)
+cp turntable-stream-restart.service /etc/systemd/system/
+cp turntable-stream-restart.timer /etc/systemd/system/
+
 # Reload systemd
 systemctl daemon-reload
+systemctl enable turntable-stream-restart.timer
+systemctl start turntable-stream-restart.timer
 
 echo
 echo -e "${GREEN}=========================================="

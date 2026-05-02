@@ -299,13 +299,22 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
         return
     
     # Start FFmpeg to encode PCM stdin to MP3 stdout
+    # Build audio filter chain.
+    # loudnorm brings levels to -14 LUFS broadcast standard without clipping.
+    # volume_gain is applied first as a trim if the user wants to nudge levels,
+    # but default of 1.0 means no change (loudnorm handles the rest).
+    if volume_gain != 1.0:
+        af = f'volume={volume_gain},loudnorm=I=-14:TP=-1:LRA=11'
+    else:
+        af = 'loudnorm=I=-14:TP=-1:LRA=11'
+
     cmd = [
         'ffmpeg',
         '-f', 's16le',           # Input format: signed 16-bit little-endian PCM
         '-ar', str(sample_rate), # Input sample rate
         '-ac', '2',              # Input channels (stereo)
         '-i', 'pipe:0',          # Read from stdin
-        '-af', f'volume={volume_gain}',  # Apply volume gain
+        '-af', af,
         '-acodec', 'libmp3lame',
         '-ab', bitrate,
         '-f', 'mp3',
