@@ -89,8 +89,7 @@ audio_processing:
   normalize: false
   
   # Volume gain (1.0 = no change, 2.0 = double, 0-3.0 recommended)
-  # Keep below 1.1 if your turntable signal peaks near 0dBFS to avoid clipping.
-  volume_gain: 0.9
+  volume_gain: 2.0
   
   # Enable noise gate (reduces background noise)
   noise_gate: false
