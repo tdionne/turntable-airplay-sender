@@ -6,6 +6,8 @@
 
 set -e
 
+REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 # Configuration
 INSTALL_DIR="/opt/turntable-streaming"
 DOC_DIR="/usr/share/doc/turntable-streaming"
@@ -78,7 +80,6 @@ pip install -r requirements.txt
 
 # Install systemd services
 echo "Installing systemd services..."
-REPO_DIR="$(pwd)"
 
 # Streaming service
 cat > /etc/systemd/system/turntable-stream.service << EOF
