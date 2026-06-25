@@ -521,13 +521,16 @@ def ffmpeg_capture_thread(device="plughw:2,0", sample_rate=48000, bitrate="320k"
 
 def get_local_ip():
     """Get local IP address."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        s.connect(('8.8.8.8', 80))
-        ip = s.getsockname()[0]
-    finally:
-        s.close()
-    return ip
+    for _ in range(10):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(('8.8.8.8', 80))
+            return s.getsockname()[0]
+        except OSError:
+            time.sleep(3)
+        finally:
+            s.close()
+    return '0.0.0.0'
 
 
 def signal_handler(sig, frame):
