@@ -26,6 +26,9 @@ wheels/
 # Configuration
 config.yaml
 
+# Local setup notes
+PI_SETUP.md
+
 # Logs
 *.log
 
