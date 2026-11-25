@@ -1,0 +1,118 @@
+# Live configuration from the Raspberry Pi (/opt/turntable-streaming/config.yaml),
+# saved 2026-11-24. To restore on a rebuilt Pi: cp config.pi.yaml config.yaml
+
+# Turntable AirPlay Sender Configuration
+
+# Audio Input Settings
+audio_input:
+  # Use ALSA directly (recommended for Raspberry Pi)
+  # Set to true if PyAudio doesn't detect your USB turntable
+  use_alsa: true
+  
+  # ALSA device string (when use_alsa is true)
+  # Find your card number with: arecord -l
+  # Format: plughw:CARD,DEVICE (e.g., plughw:2,0 for card 2)
+  alsa_device: "plughw:2,0"
+  
+  # PyAudio device index (when use_alsa is false)
+  # Use --list-devices to find yours
+  device_index: null
+  
+  # Alternative: Device name substring to search for (PyAudio only)
+  # Examples: "USB AUDIO", "CODEC", null
+  device_name: null
+  
+  # Sample rate (44100 for CD quality, 48000 for high quality)
+  sample_rate: 48000
+  
+  # Channels (2 for stereo)
+  channels: 2
+  
+  # Bits per sample (16 or 24)
+  sample_width: 16
+  
+  # Chunk size (smaller = lower latency, higher CPU)
+  chunk_size: 1024
+
+# AirPlay Output Settings
+airplay_output:
+  # Target device name (use --discover to find devices)
+  # Leave as null to manually select on startup
+  device_name: null
+  
+  # Auto-reconnect on connection loss
+  auto_reconnect: true
+  
+  # Maximum reconnection attempts
+  max_reconnect_attempts: 10
+  
+  # Reconnect delay in seconds
+  reconnect_delay: 5
+
+# Auto-Play Detection
+auto_play:
+  # Enable automatic playback when needle is detected
+  enabled: true
+  
+  # Default Sonos speaker for auto-play
+  # Example: "Living Room", "Kitchen", etc.
+  default_speaker: "Living Room"
+  
+  # Audio level threshold for needle detection (0-32767)
+  # Lower = more sensitive, Higher = less sensitive
+  # Recommended: 300-1000 depending on your turntable volume
+  audio_threshold: 500
+  
+  # Seconds of audio above threshold before triggering
+  # Prevents false triggers from brief noise
+  trigger_delay: 2.0
+  
+  # Buffer size in seconds
+  # Audio is buffered so playback starts from when needle dropped
+  # Recommended: 10 seconds (captures start of track)
+  buffer_seconds: 10
+  
+  # Auto-stop when record ends (prolonged silence)
+  auto_stop: false
+  
+  # Silence detection (seconds of silence before auto-stop)
+  silence_duration: 30
+
+# Audio Processing
+audio_processing:
+  # Enable volume normalization
+  normalize: false
+  
+  # Volume boost (1.0 = no change, 2.0 = double, 0-3.0 recommended)
+  volume_gain: 2.0
+  
+  # Enable noise gate (reduces background noise)
+  noise_gate: false
+  
+  # Noise gate threshold in dB
+  noise_gate_threshold: -50
+
+# Network Settings
+network:
+  # Network interface to use (null for auto)
+  interface: null
+  
+  # Discovery timeout in seconds
+  discovery_timeout: 10
+  
+  # Enable IPv6
+  ipv6: false
+
+# Logging
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR
+  level: INFO
+  
+  # Log to file
+  log_to_file: true
+  
+  # Log file path
+  log_file: turntable-airplay.log
+  
+  # Max log file size in MB
+  max_log_size: 10
